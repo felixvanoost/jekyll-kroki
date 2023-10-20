@@ -1,22 +1,25 @@
 # frozen_string_literal: true
 
-require 'base64'
-require 'jekyll'
-require 'json'
-require 'net/http'
-require 'nokogiri'
-require 'zlib'
+require_relative "kroki/version"
+
+require "base64"
+require "jekyll"
+require "json"
+require "net/http"
+require "nokogiri"
+require "zlib"
 
 module Jekyll
+  # Jekyll plugin for the Kroki diagram engine
   class Kroki
-    KROKI_INSTANCE_URL = 'https://kroki.io'
+    KROKI_INSTANCE_URL = "https://kroki.io"
 
     class << self
       # Renders all diagram descriptions written in a Kroki-supported language in an HTML document.
       #
       # @param [Jekyll::Page or Jekyll::Document] The document to render diagrams in
       def render(doc)
-        puts 'Rendering diagrams using Kroki'
+        puts "Rendering diagrams using Kroki"
 
         # Parse the HTML document
         parsed_doc = Nokogiri::HTML.parse(doc.output)
@@ -48,7 +51,7 @@ module Jekyll
 
         begin
           response = Net::HTTP.get_response(uri)
-        rescue StandardError, RuntimeError => e
+        rescue StandardError => e
           raise e.message
         else
           response.body if response.is_a?(Net::HTTPSuccess)
@@ -77,10 +80,10 @@ module Jekyll
 
         begin
           response = Net::HTTP.get_response(uri)
-        rescue StandardError, RuntimeError => e
+        rescue StandardError => e
           raise e.message
         else
-          JSON.parse(response.body)['version'].keys if response.is_a?(Net::HTTPSuccess)
+          JSON.parse(response.body)["version"].keys if response.is_a?(Net::HTTPSuccess)
         end
       end
 
@@ -89,7 +92,7 @@ module Jekyll
       #
       # @param [Jekyll::Page or Jekyll::Document] The document to check for renderability
       def renderable?(doc)
-        doc.output_ext == '.html' && (doc.is_a?(Jekyll::Page) || doc.write?)
+        doc.output_ext == ".html" && (doc.is_a?(Jekyll::Page) || doc.write?)
       end
     end
   end
