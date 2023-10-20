@@ -7,7 +7,7 @@ Gem::Specification.new do |spec|
   spec.version = Jekyll::Kroki::VERSION
   spec.authors = ["Felix van Oost"]
 
-  spec.summary = "A Jekyll plugin for the Kroki diagram engine"
+  spec.summary = "A Jekyll plugin to convert diagram descriptions into images using Kroki"
   spec.description = "Replaces diagram descriptions written in any Kroki-supported language in HTML files with their
                       visual representation in SVG format"
   spec.homepage = "https://github.com/felixvanoost/jekyll-kroki"
