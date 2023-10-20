@@ -96,7 +96,7 @@ module Jekyll
       def kroki_url(config)
         if config.key?("jekyll-kroki") && config["jekyll-kroki"].key?("kroki_url")
           url = config["jekyll-kroki"]["kroki_url"]
-          raise "'kroki_url' is not a valid HTTP URL" unless URI.parse(url).is_a?(URI::HTTP)
+          raise TypeError, "'kroki_url' is not a valid HTTP URL" unless URI.parse(url).is_a?(URI::HTTP)
 
           URI(url)
         else
