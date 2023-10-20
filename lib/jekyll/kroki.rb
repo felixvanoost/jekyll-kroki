@@ -10,25 +10,27 @@ require "nokogiri"
 require "zlib"
 
 module Jekyll
-  # Jekyll plugin for the Kroki diagram engine
+  # Converts diagram descriptions into images using Kroki
   class Kroki
-    KROKI_INSTANCE_URL = "https://kroki.io"
+    KROKI_DEFAULT_URL = "https://kroki.io"
 
     class << self
       # Renders all diagram descriptions written in a Kroki-supported language in an HTML document.
       #
       # @param [Jekyll::Page or Jekyll::Document] The document to render diagrams in
       def render(doc)
-        puts "Rendering diagrams using Kroki"
+        # Get the URL of the Kroki instance
+        kroki_url = kroki_url(doc.site.config)
+        puts "[jekyll-kroki] Rendering diagrams in '#{doc.name}' using '#{kroki_url}'"
 
         # Parse the HTML document
         parsed_doc = Nokogiri::HTML.parse(doc.output)
 
         # Iterate through every diagram description in each of the supported languages
-        get_supported_languages(KROKI_INSTANCE_URL).each do |language|
+        get_supported_languages(kroki_url).each do |language|
           parsed_doc.css("code[class~='language-#{language}']").each do |diagram_desc|
             # Get the rendered diagram using Kroki
-            rendered_diagram = render_diagram(KROKI_INSTANCE_URL, diagram_desc, language)
+            rendered_diagram = render_diagram(kroki_url, diagram_desc, language)
 
             # Replace the diagram description with the SVG representation
             diagram_desc.replace(rendered_diagram)
@@ -84,6 +86,21 @@ module Jekyll
           raise e.message
         else
           JSON.parse(response.body)["version"].keys if response.is_a?(Net::HTTPSuccess)
+        end
+      end
+
+      # Gets the URL of the Kroki instance to use for rendering diagrams.
+      #
+      # @param The Jekyll site configuration
+      # @return [URI::HTTP] The URL of the Kroki instance
+      def kroki_url(config)
+        if config.key?("jekyll-kroki") && config["jekyll-kroki"].key?("kroki_url")
+          url = config["jekyll-kroki"]["kroki_url"]
+          raise TypeError, "'kroki_url' is not a valid HTTP URL" unless URI.parse(url).is_a?(URI::HTTP)
+
+          URI(url)
+        else
+          URI(KROKI_DEFAULT_URL)
         end
       end
 
