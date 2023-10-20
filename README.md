@@ -29,7 +29,7 @@ Kroki --> Jekyll: Rendered diagram in SVG format
 
 When Jekyll builds your site, the `jekyll-kroki` plugin will encode the diagram, send it to the Kroki server for rendering, then replace the diagram description in the generated HTML with the rendered diagram in SVG format:
 
-![sample-diagram](https://github.com/felixvanoost/jekyll-kroki/assets/10233016/e526864f-c364-49a0-9cca-929a59343af0)
+![sample-diagram](https://github.com/felixvanoost/jekyll-kroki/assets/10233016/244d2ec4-b09b-4a5f-8164-3851574c3dd2)
 
 The site remains truly static as the SVG is directly embedded in the HTML files that Jekyll serves. Jekyll only depends on the Kroki server (which can also be run locally) during the build stage, and all of the client-side processing that is normally used to render diagrams into images is eliminated.
 
