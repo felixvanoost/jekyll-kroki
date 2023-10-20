@@ -35,6 +35,17 @@ The site remains truly static as the SVG is directly embedded in the HTML files 
 
 `jekyll-kroki` uses the same Markdown fenced code syntax as the [GitLab Kroki integration](https://docs.gitlab.com/ee/administration/integration/kroki.html), allowing diagram descriptions in Markdown files to be displayed seamlessly in both the GitLab UI and on GitLab Pages sites generated using Jekyll.
 
+### Configuration
+
+You can specify the URL of the Kroki instance to use in the Jekyll `_config.yml` file:
+
+```yaml
+jekyll-kroki:
+  kroki_url: "https://my-kroki.server"
+```
+
+This is useful if you want to run a Kroki instance locally or your organisation maintains its own private Kroki server. `jekyll-kroki` will use the public Kroki instance https://kroki.io by default if a URL is not specified.
+
 ## Contributing
 
 Bug reports and pull requests are welcome! For major changes, please open an issue first to discuss what you would like to change.
