@@ -7,6 +7,7 @@ require "jekyll"
 require "json"
 require "net/http"
 require "nokogiri"
+require "retriable"
 require "zlib"
 
 module Jekyll
@@ -43,21 +44,15 @@ module Jekyll
 
       # Renders a diagram description using Kroki.
       #
-      # @param [String] The URL of the Kroki instance
+      # @param [URI::HTTP] The URL of the Kroki instance
       # @param [String] The diagram description
       # @param [String] The language of the diagram description
       # @return [String] The rendered diagram in SVG format
       def render_diagram(kroki_url, diagram_desc, language)
-        # Encode the diagram and construct the URI
-        uri = URI("#{kroki_url}/#{language}/svg/#{encode_diagram(diagram_desc.text)}")
+        response = http_get(URI("#{kroki_url}/#{language}/svg/#{encode_diagram(diagram_desc.text)}"))
+        raise StandardError unless response.is_a?(Net::HTTPSuccess)
 
-        begin
-          response = Net::HTTP.get_response(uri)
-        rescue StandardError => e
-          raise e.message
-        else
-          response.body if response.is_a?(Net::HTTPSuccess)
-        end
+        response.body
       end
 
       # Encodes the diagram into Kroki format using deflate + base64.
@@ -75,18 +70,25 @@ module Jekyll
       # configured Kroki instance. For example, Mermaid will still show up as a supported language even if the Mermaid
       # companion container is not running.
       #
-      # @param [String] The URL of the Kroki instance
+      # @param [URI::HTTP] The URL of the Kroki instance
       # @return [Array] The supported diagram languages
       def get_supported_languages(kroki_url)
-        uri = URI("#{kroki_url}/health")
+        response = http_get(URI("#{kroki_url}/health"))
+        raise StandardError unless response.is_a?(Net::HTTPSuccess)
 
-        begin
-          response = Net::HTTP.get_response(uri)
-        rescue StandardError => e
-          raise e.message
-        else
-          JSON.parse(response.body)["version"].keys if response.is_a?(Net::HTTPSuccess)
+        JSON.parse(response.body)["version"].keys
+      end
+
+      # Sends an HTTP GET request and returns the response.
+      #
+      # @param [URI] The URI to GET from
+      # @return [Net::HTTPResponse] The HTTP GET response
+      def http_get(uri)
+        Retriable.retriable(tries: 3) do
+          Net::HTTP.get_response(uri)
         end
+      rescue StandardError => e
+        raise e.message
       end
 
       # Gets the URL of the Kroki instance to use for rendering diagrams.
