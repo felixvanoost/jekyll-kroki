@@ -16,28 +16,32 @@ module Jekyll
     HTTP_MAX_RETRIES = 3
 
     class << self
-      # Renders all diagram descriptions written in a Kroki-supported language in an HTML document.
+      # Renders all diagram descriptions in any Kroki-supported language and embeds them throughout a Jekyll site.
       #
-      # @param [Jekyll::Page or Jekyll::Document] The document to embed diagrams in
-      def embed(doc)
+      # @param [Jekyll::Site] The site to embed diagrams in
+      def embed_site(site)
         # Get the URL of the Kroki instance
-        kroki_url = kroki_url(doc.site.config)
-        puts "[jekyll-kroki] Rendering diagrams in '#{doc.name}' using Kroki instance '#{kroki_url}'"
+        kroki_url = kroki_url(site.config)
+        puts "[jekyll-kroki] Rendering diagrams using Kroki instance at '#{kroki_url}'"
 
         # Set up a Faraday connection
         connection = setup_connection(kroki_url)
 
-        # Parse the HTML document, render and embed the diagrams, then convert it back into HTML
-        parsed_doc = Nokogiri::HTML(doc.output)
-        embed_diagrams_in_doc(connection, parsed_doc)
-        doc.output = parsed_doc.to_html
+        # Parse the page, render and embed the diagrams, then convert it back into HTML
+        site.pages.each do |page|
+          next unless embeddable?(page)
+
+          parsed_page = Nokogiri::HTML(page.output)
+          embed_page(connection, parsed_page)
+          page.output = parsed_page.to_html
+        end
       end
 
       # Renders all diagram descriptions in any Kroki-supported language and embeds them in an HTML document.
       #
       # @param [Faraday::Connection] The Faraday connection to use
       # @param [Nokogiri::HTML4::Document] The parsed HTML document
-      def embed_diagrams_in_doc(connection, parsed_doc)
+      def embed_page(connection, parsed_doc)
         # Iterate through every diagram description in each of the supported languages
         get_supported_languages(connection).each do |language|
           parsed_doc.css("code[class~='language-#{language}']").each do |diagram_desc|
@@ -130,6 +134,6 @@ module Jekyll
   end
 end
 
-Jekyll::Hooks.register [:pages, :documents], :post_render do |doc|
-  Jekyll::Kroki.embed(doc) if Jekyll::Kroki.embeddable?(doc)
+Jekyll::Hooks.register :site, :post_render do |doc|
+  Jekyll::Kroki.embed_site(doc)
 end
