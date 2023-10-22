@@ -3,65 +3,73 @@
 require_relative "kroki/version"
 
 require "base64"
+require "faraday"
+require "faraday/retry"
 require "jekyll"
-require "json"
-require "net/http"
 require "nokogiri"
-require "retriable"
 require "zlib"
 
 module Jekyll
   # Converts diagram descriptions into images using Kroki
   class Kroki
     KROKI_DEFAULT_URL = "https://kroki.io"
+    HTTP_MAX_RETRIES = 3
 
     class << self
       # Renders all diagram descriptions written in a Kroki-supported language in an HTML document.
       #
-      # @param [Jekyll::Page or Jekyll::Document] The document to render diagrams in
-      def render(doc)
+      # @param [Jekyll::Page or Jekyll::Document] The document to embed diagrams in
+      def embed(doc)
         # Get the URL of the Kroki instance
         kroki_url = kroki_url(doc.site.config)
-        puts "[jekyll-kroki] Rendering diagrams in '#{doc.name}' using '#{kroki_url}'"
+        puts "[jekyll-kroki] Rendering diagrams in '#{doc.name}' using Kroki instance '#{kroki_url}'"
 
-        # Parse the HTML document
-        parsed_doc = Nokogiri::HTML.parse(doc.output)
+        # Set up a Faraday connection
+        connection = setup_connection(kroki_url)
 
+        # Parse the HTML document, render and embed the diagrams, then convert it back into HTML
+        parsed_doc = Nokogiri::HTML(doc.output)
+        embed_diagrams_in_doc(connection, parsed_doc)
+        doc.output = parsed_doc.to_html
+      end
+
+      # Renders all diagram descriptions in any Kroki-supported language and embeds them in an HTML document.
+      #
+      # @param [Faraday::Connection] The Faraday connection to use
+      # @param [Nokogiri::HTML4::Document] The parsed HTML document
+      def embed_diagrams_in_doc(connection, parsed_doc)
         # Iterate through every diagram description in each of the supported languages
-        get_supported_languages(kroki_url).each do |language|
+        get_supported_languages(connection).each do |language|
           parsed_doc.css("code[class~='language-#{language}']").each do |diagram_desc|
-            # Get the rendered diagram using Kroki
-            rendered_diagram = render_diagram(kroki_url, diagram_desc, language)
-
-            # Replace the diagram description with the SVG representation
-            diagram_desc.replace(rendered_diagram)
+            # Replace the diagram description with the SVG representation rendered by Kroki
+            diagram_desc.replace(render_diagram(connection, diagram_desc, language))
           end
         end
-
-        # Generate the modified HTML document
-        doc.output = parsed_doc.to_html
       end
 
       # Renders a diagram description using Kroki.
       #
-      # @param [URI::HTTP] The URL of the Kroki instance
+      # @param [Faraday::Connection] The Faraday connection to use
       # @param [String] The diagram description
       # @param [String] The language of the diagram description
       # @return [String] The rendered diagram in SVG format
-      def render_diagram(kroki_url, diagram_desc, language)
-        response = http_get(URI("#{kroki_url}/#{language}/svg/#{encode_diagram(diagram_desc.text)}"))
-        raise StandardError unless response.is_a?(Net::HTTPSuccess)
-
+      def render_diagram(connection, diagram_desc, language)
+        begin
+          encoded_diagram = encode_diagram(diagram_desc.text)
+          response = connection.get("#{language}/svg/#{encoded_diagram}")
+        rescue Faraday::Error => e
+          raise e.response[:body]
+        end
         response.body
       end
 
       # Encodes the diagram into Kroki format using deflate + base64.
       # See https://docs.kroki.io/kroki/setup/encode-diagram/.
       #
-      # @param [String, #read] The diagram to encode
+      # @param [String, #read] The diagram description to encode
       # @return [String] The encoded diagram
-      def encode_diagram(diagram)
-        Base64.urlsafe_encode64(Zlib.deflate(diagram))
+      def encode_diagram(diagram_desc)
+        Base64.urlsafe_encode64(Zlib.deflate(diagram_desc))
       end
 
       # Gets an array of supported diagram languages from the Kroki '/health' endpoint.
@@ -70,25 +78,30 @@ module Jekyll
       # configured Kroki instance. For example, Mermaid will still show up as a supported language even if the Mermaid
       # companion container is not running.
       #
-      # @param [URI::HTTP] The URL of the Kroki instance
+      # @param [Faraday::Connection] The Faraday connection to use
       # @return [Array] The supported diagram languages
-      def get_supported_languages(kroki_url)
-        response = http_get(URI("#{kroki_url}/health"))
-        raise StandardError unless response.is_a?(Net::HTTPSuccess)
-
-        JSON.parse(response.body)["version"].keys
+      def get_supported_languages(connection)
+        begin
+          response = connection.get("health")
+        rescue Faraday::Error => e
+          raise e.response[:body]
+        end
+        response.body["version"].keys
       end
 
-      # Sends an HTTP GET request and returns the response.
+      # Sets up a new Faraday connection.
       #
-      # @param [URI] The URI to GET from
-      # @return [Net::HTTPResponse] The HTTP GET response
-      def http_get(uri)
-        Retriable.retriable(tries: 3) do
-          Net::HTTP.get_response(uri)
+      # @param [URI::HTTP] The URL of the Kroki instance
+      # @return [Faraday::Connection] The Faraday connection
+      def setup_connection(kroki_url)
+        retry_options = { max: HTTP_MAX_RETRIES, interval: 0.1, interval_randomness: 0.5, backoff_factor: 2,
+                          exceptions: [Faraday::RequestTimeoutError, Faraday::ConflictError, Faraday::ServerError] }
+
+        Faraday.new(url: kroki_url) do |builder|
+          builder.request :retry, retry_options
+          builder.response :json, content_type: /\bjson$/
+          builder.response :raise_error
         end
-      rescue StandardError => e
-        raise e.message
       end
 
       # Gets the URL of the Kroki instance to use for rendering diagrams.
@@ -106,11 +119,11 @@ module Jekyll
         end
       end
 
-      # Determines whether a document may contain renderable diagram descriptions - it is in HTML format and is either
+      # Determines whether a document may contain embeddable diagram descriptions - it is in HTML format and is either
       # a Jekyll::Page or writeable Jekyll::Document.
       #
-      # @param [Jekyll::Page or Jekyll::Document] The document to check for renderability
-      def renderable?(doc)
+      # @param [Jekyll::Page or Jekyll::Document] The document to check for embedability
+      def embeddable?(doc)
         doc.output_ext == ".html" && (doc.is_a?(Jekyll::Page) || doc.write?)
       end
     end
@@ -118,5 +131,5 @@ module Jekyll
 end
 
 Jekyll::Hooks.register [:pages, :documents], :post_render do |doc|
-  Jekyll::Kroki.render(doc) if Jekyll::Kroki.renderable?(doc)
+  Jekyll::Kroki.embed(doc) if Jekyll::Kroki.embeddable?(doc)
 end
