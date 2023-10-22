@@ -95,7 +95,7 @@ module Jekyll
       # @return [Faraday::Connection] The Faraday connection
       def setup_connection(kroki_url)
         retry_options = { max: HTTP_MAX_RETRIES, interval: 0.1, interval_randomness: 0.5, backoff_factor: 2,
-                          exceptions: [Faraday::RequestTimeoutError, Faraday::ConflictError, Faraday::ServerError] }
+                          exceptions: [Faraday::RequestTimeoutError, Faraday::ServerError] }
 
         Faraday.new(url: kroki_url) do |builder|
           builder.request :retry, retry_options
