@@ -70,7 +70,18 @@ module Jekyll
                 "expected '#{expected_content_type}', received '#{returned_content_type}'"
 
         end
-        response.body
+        sanitise_diagram(response.body)
+      end
+
+      # Sanitises a rendered diagram. This currently only removes <script> tags, which is the most minimal and naive
+      # implementation possible and is definitely not secure.
+      #
+      # @param [String] The diagram to santise in SVG format
+      # @return [String] The sanitized diagram in SVG format
+      def sanitise_diagram(diagram_svg)
+        parsed_svg = Nokogiri::XML(diagram_svg)
+        parsed_svg.xpath('//*[name()="script"]').each(&:remove)
+        parsed_svg.to_xml
       end
 
       # Encodes the diagram into Kroki format using deflate + base64.
