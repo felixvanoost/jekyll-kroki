@@ -59,10 +59,16 @@ module Jekyll
       # @return [String] The rendered diagram in SVG format
       def render_diagram(connection, diagram_desc, language)
         begin
-          encoded_diagram = encode_diagram(diagram_desc.text)
-          response = connection.get("#{language}/svg/#{encoded_diagram}")
+          response = connection.get("#{language}/svg/#{encode_diagram(diagram_desc.text)}")
         rescue Faraday::Error => e
           raise e.response[:body]
+        end
+        expected_content_type = "image/svg+xml"
+        returned_content_type = response.headers[:content_type]
+        if returned_content_type != expected_content_type
+          raise "Kroki returned an incorrect content type: " \
+                "expected '#{expected_content_type}', received '#{returned_content_type}'"
+
         end
         response.body
       end
