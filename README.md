@@ -40,8 +40,8 @@ The site remains truly static as the SVG is directly embedded in the HTML files 
 You can specify the URL of the Kroki instance to use in the Jekyll `_config.yml` file:
 
 ```yaml
-jekyll-kroki:
-  kroki_url: "https://my-kroki.server"
+kroki:
+  url: "https://my-kroki.server"
 ```
 
 This is useful if you want to run a Kroki instance locally or your organisation maintains its own private Kroki server. `jekyll-kroki` will use the public Kroki instance https://kroki.io by default if a URL is not specified.
