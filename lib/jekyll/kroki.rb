@@ -130,9 +130,9 @@ module Jekyll
       # @param The Jekyll site configuration
       # @return [URI::HTTP] The URL of the Kroki instance
       def kroki_url(config)
-        if config.key?("jekyll-kroki") && config["jekyll-kroki"].key?("kroki_url")
-          url = config["jekyll-kroki"]["kroki_url"]
-          raise TypeError, "'kroki_url' is not a valid HTTP URL" unless URI.parse(url).is_a?(URI::HTTP)
+        if config.key?("kroki") && config["kroki"].key?("url")
+          url = config["kroki"]["url"]
+          raise TypeError, "'url' is not a valid HTTP URL" unless URI.parse(url).is_a?(URI::HTTP)
 
           URI(url)
         else
