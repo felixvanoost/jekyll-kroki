@@ -73,8 +73,8 @@ module Jekyll
         sanitise_diagram(response.body)
       end
 
-      # Sanitises a rendered diagram. This currently only removes <script> tags, which is the most minimal and naive
-      # implementation possible and is definitely not secure.
+      # Sanitises a rendered diagram. Only <script> tags are removed, which is the most minimal / naive implementation
+      # possible and is definitely not secure.
       #
       # @param [String] The diagram to santise in SVG format
       # @return [String] The sanitized diagram in SVG format
