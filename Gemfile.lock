@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    jekyll-kroki (0.2.0)
+    jekyll-kroki (0.2.1)
       faraday (~> 2.7)
       faraday-retry (~> 2.2)
       jekyll (~> 4)
