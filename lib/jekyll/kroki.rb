@@ -59,12 +59,29 @@ module Jekyll
       # @return [String] The rendered diagram in SVG format
       def render_diagram(connection, diagram_desc, language)
         begin
-          encoded_diagram = encode_diagram(diagram_desc.text)
-          response = connection.get("#{language}/svg/#{encoded_diagram}")
+          response = connection.get("#{language}/svg/#{encode_diagram(diagram_desc.text)}")
         rescue Faraday::Error => e
           raise e.response[:body]
         end
-        response.body
+        expected_content_type = "image/svg+xml"
+        returned_content_type = response.headers[:content_type]
+        if returned_content_type != expected_content_type
+          raise "Kroki returned an incorrect content type: " \
+                "expected '#{expected_content_type}', received '#{returned_content_type}'"
+
+        end
+        sanitise_diagram(response.body)
+      end
+
+      # Sanitises a rendered diagram. Only <script> elements are removed, which is the most minimal / naive
+      # implementation possible and is definitely not secure.
+      #
+      # @param [String] The diagram to santise in SVG format
+      # @return [String] The sanitized diagram in SVG format
+      def sanitise_diagram(diagram_svg)
+        parsed_svg = Nokogiri::XML(diagram_svg)
+        parsed_svg.xpath('//*[name()="script"]').each(&:remove)
+        parsed_svg.to_xml
       end
 
       # Encodes the diagram into Kroki format using deflate + base64.

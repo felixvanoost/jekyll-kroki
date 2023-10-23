@@ -46,6 +46,16 @@ jekyll-kroki:
 
 This is useful if you want to run a Kroki instance locally or your organisation maintains its own private Kroki server. `jekyll-kroki` will use the public Kroki instance https://kroki.io by default if a URL is not specified.
 
+### Security
+
+Embedding diagrams as SVGs directly within HTML files can be dangerous. You should only use a Kroki instance that you trust (or run your own!). For additional security, you can configure a [Content Security Policy (CSP)](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP) using custom Webrick headers in the Jekyll `_config.yml` file:
+
+```yaml
+webrick:
+  headers:
+    Content-Security-Policy: "Add a policy here"
+```
+
 ## Contributing
 
 Bug reports and pull requests are welcome! For major changes, please open an issue first to discuss what you would like to change.
