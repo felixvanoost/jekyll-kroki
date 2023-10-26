@@ -1,3 +1,6 @@
+![Main Workflow](https://github.com/felixvanoost/jekyll-kroki/actions/workflows/main.yml/badge.svg) 
+[![Gem Version](https://badge.fury.io/rb/jekyll-kroki.svg)](https://badge.fury.io/rb/jekyll-kroki)
+
 # jekyll-kroki
 A Jekyll plugin to convert diagram descriptions into images using Kroki
 
