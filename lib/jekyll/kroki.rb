@@ -4,6 +4,7 @@ require_relative "kroki/version"
 
 require "base64"
 require "faraday"
+require "faraday/net_http_persistent"
 require "faraday/retry"
 require "jekyll"
 require "nokogiri"
@@ -42,7 +43,6 @@ module Jekyll
       # @param [Faraday::Connection] The Faraday connection to use
       # @param [Nokogiri::HTML4::Document] The parsed HTML document
       def embed_page(connection, parsed_doc)
-        # Iterate through every diagram description in each of the supported languages
         get_supported_languages(connection).each do |language|
           parsed_doc.css("code[class~='language-#{language}']").each do |diagram_desc|
             # Replace the diagram description with the SVG representation rendered by Kroki
@@ -118,7 +118,8 @@ module Jekyll
         retry_options = { max: HTTP_MAX_RETRIES, interval: 0.1, interval_randomness: 0.5, backoff_factor: 2,
                           exceptions: [Faraday::RequestTimeoutError, Faraday::ServerError] }
 
-        Faraday.new(url: kroki_url) do |builder|
+        Faraday.new(url: kroki_url, request: { timeout: 5 }) do |builder|
+          builder.adapter :net_http_persistent
           builder.request :retry, retry_options
           builder.response :json, content_type: /\bjson$/
           builder.response :raise_error
