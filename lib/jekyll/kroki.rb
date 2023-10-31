@@ -4,8 +4,8 @@ require_relative "kroki/version"
 
 require "base64"
 require "faraday"
-require "faraday/net_http_persistent"
 require "faraday/retry"
+require "httpx/adapters/faraday"
 require "jekyll"
 require "nokogiri"
 require "zlib"
@@ -119,7 +119,7 @@ module Jekyll
                           exceptions: [Faraday::RequestTimeoutError, Faraday::ServerError] }
 
         Faraday.new(url: kroki_url, request: { timeout: 5 }) do |builder|
-          builder.adapter :net_http_persistent
+          builder.adapter :httpx, persistent: true
           builder.request :retry, retry_options
           builder.response :json, content_type: /\bjson$/
           builder.response :raise_error
