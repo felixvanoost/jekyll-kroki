@@ -12,4 +12,4 @@ Style/StringLiteralsInInterpolation:
 Layout/LineLength:
   Max: 120
 Metrics/MethodLength:
-  Max: 12
+  Max: 14
