@@ -25,24 +25,19 @@ module Jekyll
         kroki_url = kroki_url(site.config)
         puts "[jekyll-kroki] Rendering diagrams using Kroki instance at '#{kroki_url}'"
 
-        # Set up a Faraday connection
         connection = setup_connection(kroki_url)
+        supported_languages = get_supported_languages(connection)
 
-        begin
-          # Get an array of supported languages
-          supported_languages = get_supported_languages(connection)
+        site.pages.each do |page|
+          next unless embeddable?(page)
 
-          site.pages.each do |page|
-            next unless embeddable?(page)
-
-            # Parse the page, render and embed the diagrams, then convert it back into HTML
-            parsed_page = Nokogiri::HTML(page.output)
-            embed_page(connection, supported_languages, parsed_page)
-            page.output = parsed_page.to_html
-          end
-        rescue StandardError => e
-          exit(e)
+          # Parse the page, render and embed the diagrams, then convert it back into HTML
+          parsed_page = Nokogiri::HTML(page.output)
+          embed_page(connection, supported_languages, parsed_page)
+          page.output = parsed_page.to_html
         end
+      rescue StandardError => e
+        exit(e)
       end
 
       # Renders all diagram descriptions in any Kroki-supported language and embeds them in an HTML document.
@@ -110,12 +105,13 @@ module Jekyll
       # @param [Faraday::Connection] The Faraday connection to use
       # @return [Array] The supported diagram languages
       def get_supported_languages(connection)
-        begin
-          response = connection.get("health")
-        rescue Faraday::Error => e
-          raise e
-        end
-        response.body["version"].keys
+        response = connection.get("health")
+        supported_languages = response.body["version"]&.keys
+        raise "'#{connection.url_prefix}' does not point to a valid Kroki instance" if supported_languages.nil?
+
+        supported_languages
+      rescue Faraday::Error => e
+        raise e
       end
 
       # Sets up a new Faraday connection.
@@ -170,7 +166,7 @@ module Jekyll
       rescue StandardError => e
         file, line_number, caller = e.backtrace[caller_index].split(":")
         caller = caller.tr("`", "'")
-        warn "[jekyll-kroki] '#{error.message}' #{caller} on line #{line_number} of #{file}".red
+        warn %([jekyll-kroki] "#{error.message}" #{caller} on line #{line_number} of #{file}).red
         exec "echo ''"
       end
     end
