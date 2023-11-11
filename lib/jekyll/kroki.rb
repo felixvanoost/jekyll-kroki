@@ -28,23 +28,31 @@ module Jekyll
         # Set up a Faraday connection
         connection = setup_connection(kroki_url)
 
-        # Parse the page, render and embed the diagrams, then convert it back into HTML
-        site.pages.each do |page|
-          next unless embeddable?(page)
+        begin
+          # Get an array of supported languages
+          supported_languages = get_supported_languages(connection)
 
-          parsed_page = Nokogiri::HTML(page.output)
-          embed_page(connection, parsed_page)
-          page.output = parsed_page.to_html
+          site.pages.each do |page|
+            next unless embeddable?(page)
+
+            # Parse the page, render and embed the diagrams, then convert it back into HTML
+            parsed_page = Nokogiri::HTML(page.output)
+            embed_page(connection, supported_languages, parsed_page)
+            page.output = parsed_page.to_html
+          end
+        rescue StandardError => e
+          exit(e)
         end
       end
 
       # Renders all diagram descriptions in any Kroki-supported language and embeds them in an HTML document.
       #
       # @param [Faraday::Connection] The Faraday connection to use
+      # @param [Array] The supported diagram languages
       # @param [Nokogiri::HTML4::Document] The parsed HTML document
-      def embed_page(connection, parsed_doc)
-        get_supported_languages(connection).each do |language|
-          parsed_doc.css("code[class~='language-#{language}']").each do |diagram_desc|
+      def embed_page(connection, supported_languages, parsed_page)
+        supported_languages.each do |language|
+          parsed_page.css("code[class~='language-#{language}']").each do |diagram_desc|
             # Replace the diagram description with the SVG representation rendered by Kroki
             diagram_desc.replace(render_diagram(connection, diagram_desc, language))
           end
@@ -105,7 +113,7 @@ module Jekyll
         begin
           response = connection.get("health")
         rescue Faraday::Error => e
-          raise e.response[:body]
+          raise e
         end
         response.body["version"].keys
       end
@@ -147,6 +155,23 @@ module Jekyll
       # @param [Jekyll::Page or Jekyll::Document] The document to check for embedability
       def embeddable?(doc)
         doc.output_ext == ".html" && (doc.is_a?(Jekyll::Page) || doc.write?)
+      end
+
+      # Exits the Jekyll process without returning a stack trace. This method does not return because the process is
+      # abruptly terminated.
+      #
+      # @param [StandardError] The error to display in the termination message
+      # @param [int] The caller index to display in the termination message. The default index is 1, which means the
+      #              calling method. To specify the calling method's caller, pass in 2.
+      #
+      # Source: https://www.mslinn.com/ruby/2200-crash-exit.html
+      def exit(error, caller_index = 1)
+        raise error
+      rescue StandardError => e
+        file, line_number, caller = e.backtrace[caller_index].split(":")
+        caller = caller.tr("`", "'")
+        warn "[jekyll-kroki] '#{error.message}' #{caller} on line #{line_number} of #{file}".red
+        exec "echo ''"
       end
     end
   end
