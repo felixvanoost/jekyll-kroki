@@ -5,7 +5,6 @@
 A [Jekyll](https://jekyllrb.com/) plugin to convert diagram descriptions into images using [Kroki](https://kroki.io/).
 
 ## Installation
-
 Add the `jekyll-kroki` Gem to the `:jekyll_plugins` group of your site's Gemfile:
 
 ```ruby
@@ -15,7 +14,6 @@ end
 ```
 
 ## Usage
-
 Kroki supports over 25 popular diagram scripting languages, including Blockdiag, D2, GraphViz, Mermaid, and PlantUML. The [examples](https://kroki.io/examples.html) page and complete list of [supported diagram languages](https://kroki.io/#support) provide a taste of what's possible.
 
 In Markdown, simply write your diagram descriptions inside a fenced code block with the language specified:
@@ -34,12 +32,23 @@ When Jekyll builds your site, the `jekyll-kroki` plugin will encode the diagrams
 
 ![sample-diagram](https://github.com/felixvanoost/jekyll-kroki/assets/10233016/244d2ec4-b09b-4a5f-8164-3851574c3dd2)
 
-The site remains truly static as the images are directly embedded in the HTML files that Jekyll serves. Jekyll only depends on the Kroki server (which can also be run locally) during the build stage, and all of the client-side processing that is normally used to render diagrams into images is eliminated.
+The site remains truly static as the images are directly embedded in the HTML files served by Jekyll. Jekyll only depends on the Kroki server (which can also be run locally) during the build stage, and all of the client-side processing that is normally used to render diagrams into images is eliminated.
 
-`jekyll-kroki` uses the same Markdown fenced code syntax as the [GitLab Kroki integration](https://docs.gitlab.com/ee/administration/integration/kroki.html), allowing diagram descriptions in Markdown files to be displayed seamlessly as images in both the GitLab UI and on GitLab Pages sites generated using Jekyll.
+### Advantages
+
+#### Consistent syntax
+Instead of using Liquid tags, `jekyll-kroki` leverages the same Markdown fenced code block syntax used by both [GitLab](https://docs.gitlab.com/ee/user/markdown.html#diagrams-and-flowcharts) and [GitHub](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/creating-diagrams) to display diagrams. Besides being more consistent, this means that diagram descriptions in Markdown files can be displayed consistently as images across the GitLab/GitHub UI and on GitLab/GitHub Pages sites generated using Jekyll. GitLab currently supports Mermaid and PlantUML, while GitHub only supports Mermaid.
+
+#### Seamless GitLab integration
+Self-managed GitLab instances can additionally enable the [Kroki integration](https://docs.gitlab.com/ee/administration/integration/kroki.html), which adds support for all the same diagram scripting languages used by `jekyll-kroki`. Furthermore, by pointing both GitLab and `jekyll-kroki` to the same Kroki instance, you can guarantee that diagrams are generated using identical versions of the diagram libraries.
+
+#### Speed
+The server-side nature of Kroki means that you don't have to deal with installing or updating any diagram library dependencies on your machine. Jekyll sites that are generated in CI/CD pipelines will thus build faster.
+
+#### Flexibility
+Kroki is available either as a free service or self-hosted using Docker. Organisations that frequently build large Jekyll sites with many diagrams or want maximum control over their data have the option of running their own Kroki instance to provide consistency and use compute resources efficiently.
 
 ### Configuration
-
 You can specify the URL of the Kroki instance to use in the Jekyll `_config.yml` file:
 
 ```yaml
@@ -50,7 +59,6 @@ kroki:
 This is useful if you want to run a Kroki instance locally or your organisation maintains its own private Kroki server. The public Kroki instance https://kroki.io is used by default.
 
 ### Security
-
 Embedding diagrams as SVGs directly within HTML files can be dangerous. You should only use a Kroki instance that you trust (or run your own!). For additional security, you can configure a [Content Security Policy (CSP)](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP) using custom Webrick headers in the Jekyll `_config.yml` file:
 
 ```yaml
@@ -60,5 +68,4 @@ webrick:
 ```
 
 ## Contributing
-
 Bug reports and pull requests are welcome! For major changes, please open an issue first to discuss what you would like to change.

@@ -1,4 +1,11 @@
 {
 	"name": "Ruby",
-	"image": "mcr.microsoft.com/devcontainers/ruby:3.0-bullseye"
+	"image": "mcr.microsoft.com/devcontainers/ruby:3.0-bullseye",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"streetsidesoftware.code-spell-checker"
+			]
+		}
+	}
 }
