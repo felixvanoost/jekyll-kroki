@@ -17,9 +17,9 @@ module Jekyll
     HTTP_MAX_RETRIES = 3
 
     class << self
-      # Renders all diagram descriptions in any Kroki-supported language and embeds them throughout a Jekyll site.
+      # Renders and embeds all diagram descriptions in a Jekyll site using Kroki.
       #
-      # @param [Jekyll::Site] The site to embed diagrams in
+      # @param [Jekyll::Site] The Jekyll site to embed diagrams in
       def embed_site(site)
         # Get the URL of the Kroki instance
         kroki_url = kroki_url(site.config)
@@ -28,33 +28,33 @@ module Jekyll
         connection = setup_connection(kroki_url)
         supported_languages = get_supported_languages(connection)
 
-        site.pages.each do |page|
-          next unless embeddable?(page)
+        site.documents.each do |doc|
+          next unless embeddable?(doc)
 
-          # Parse the page, render and embed the diagrams, then convert it back into HTML
-          parsed_page = Nokogiri::HTML(page.output)
-          embed_page(connection, supported_languages, parsed_page)
-          page.output = parsed_page.to_html
+          # Parse the HTML document, render and embed the diagrams, then convert it back into HTML
+          parsed_doc = Nokogiri::HTML(doc.output)
+          embed_doc(connection, supported_languages, parsed_doc)
+          doc.output = parsed_doc.to_html
         end
       rescue StandardError => e
         exit(e)
       end
 
-      # Renders all diagram descriptions in any Kroki-supported language and embeds them in an HTML document.
+      # Renders all diagram descriptions in a document and embeds them as inline SVGs in the HTML source.
       #
       # @param [Faraday::Connection] The Faraday connection to use
       # @param [Array] The supported diagram languages
       # @param [Nokogiri::HTML4::Document] The parsed HTML document
-      def embed_page(connection, supported_languages, parsed_page)
+      def embed_doc(connection, supported_languages, parsed_doc)
         supported_languages.each do |language|
-          parsed_page.css("code[class~='language-#{language}']").each do |diagram_desc|
+          parsed_doc.css("code[class~='language-#{language}']").each do |diagram_desc|
             # Replace the diagram description with the SVG representation rendered by Kroki
             diagram_desc.replace(render_diagram(connection, diagram_desc, language))
           end
         end
       end
 
-      # Renders a diagram description using Kroki.
+      # Renders a single diagram description using Kroki.
       #
       # @param [Faraday::Connection] The Faraday connection to use
       # @param [String] The diagram description
@@ -173,6 +173,6 @@ module Jekyll
   end
 end
 
-Jekyll::Hooks.register :site, :post_render do |doc|
-  Jekyll::Kroki.embed_site(doc)
+Jekyll::Hooks.register :site, :post_render do |site|
+  Jekyll::Kroki.embed_site(site)
 end
