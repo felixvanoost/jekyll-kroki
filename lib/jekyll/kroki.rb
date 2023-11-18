@@ -40,7 +40,7 @@ module Jekyll
         exit(e)
       end
 
-      # Renders all diagram descriptions in a document using Kroki and embeds them as inline SVGs.
+      # Renders all diagram descriptions in a document and embeds them as inline SVGs in the HTML source.
       #
       # @param [Faraday::Connection] The Faraday connection to use
       # @param [Array] The supported diagram languages
@@ -54,7 +54,7 @@ module Jekyll
         end
       end
 
-      # Renders a diagram description using Kroki.
+      # Renders a single diagram description using Kroki.
       #
       # @param [Faraday::Connection] The Faraday connection to use
       # @param [String] The diagram description
