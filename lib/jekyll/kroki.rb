@@ -14,6 +14,9 @@ module Jekyll
   # Converts diagram descriptions into images using Kroki
   class Kroki
     KROKI_DEFAULT_URL = "https://kroki.io"
+    SUPPORTED_LANGUAGES = %w[actdiag blockdiag bpmn bytefield c4plantuml d2 dbml diagramsnet ditaa erd excalidraw
+                             graphviz mermaid nomnoml nwdiag packetdiag pikchr plantuml rackdiag seqdiag structurizr
+                             svgbob symbolator tikz umlet vega vegalite wavedrom wireviz].freeze
     HTTP_MAX_RETRIES = 3
 
     class << self
@@ -26,15 +29,14 @@ module Jekyll
         puts "[jekyll-kroki] Rendering diagrams using Kroki instance at '#{kroki_url}'"
 
         connection = setup_connection(kroki_url)
-        supported_languages = get_supported_languages(connection)
 
         site.documents.each do |doc|
           next unless embeddable?(doc)
 
           # Parse the HTML document, render and embed the diagrams, then convert it back into HTML
-          parsed_doc = Nokogiri::HTML(doc.output)
-          embed_doc(connection, supported_languages, parsed_doc)
-          doc.output = parsed_doc.to_html
+          parsed_page = Nokogiri::HTML(doc.output)
+          embed_page(connection, parsed_page)
+          doc.output = parsed_page.to_html
         end
       rescue StandardError => e
         exit(e)
@@ -43,10 +45,9 @@ module Jekyll
       # Renders all diagram descriptions in a document and embeds them as inline SVGs in the HTML source.
       #
       # @param [Faraday::Connection] The Faraday connection to use
-      # @param [Array] The supported diagram languages
       # @param [Nokogiri::HTML4::Document] The parsed HTML document
-      def embed_doc(connection, supported_languages, parsed_doc)
-        supported_languages.each do |language|
+      def embed_page(connection, parsed_doc)
+        SUPPORTED_LANGUAGES.each do |language|
           parsed_doc.css("code[class~='language-#{language}']").each do |diagram_desc|
             # Replace the diagram description with the SVG representation rendered by Kroki
             diagram_desc.replace(render_diagram(connection, diagram_desc, language))
@@ -64,6 +65,8 @@ module Jekyll
         begin
           response = connection.get("#{language}/svg/#{encode_diagram(diagram_desc.text)}")
         rescue Faraday::Error => e
+          raise "'#{connection.url_prefix}' does not point to a valid Kroki instance" if e.response.nil?
+
           raise e.response[:body]
         end
         expected_content_type = "image/svg+xml"
@@ -94,24 +97,6 @@ module Jekyll
       # @return [String] The encoded diagram
       def encode_diagram(diagram_desc)
         Base64.urlsafe_encode64(Zlib.deflate(diagram_desc))
-      end
-
-      # Gets an array of supported diagram languages from the Kroki '/health' endpoint.
-      #
-      # This only shows which languages the Kroki project supports, not which ones are currently available from the
-      # configured Kroki instance. For example, Mermaid will still show up as a supported language even if the Mermaid
-      # companion container is not running.
-      #
-      # @param [Faraday::Connection] The Faraday connection to use
-      # @return [Array] The supported diagram languages
-      def get_supported_languages(connection)
-        response = connection.get("health")
-        supported_languages = response.body["version"]&.keys
-        raise "'#{connection.url_prefix}' does not point to a valid Kroki instance" if supported_languages.nil?
-
-        supported_languages
-      rescue Faraday::Error => e
-        raise e
       end
 
       # Sets up a new Faraday connection.
