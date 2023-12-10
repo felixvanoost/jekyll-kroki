@@ -26,33 +26,44 @@ module Jekyll
       def embed_site(site)
         # Get the URL of the Kroki instance
         kroki_url = kroki_url(site.config)
-        puts "[jekyll-kroki] Rendering diagrams using Kroki instance at '#{kroki_url}'"
-
         connection = setup_connection(kroki_url)
 
-        site.documents.each do |doc|
+        rendered_diag = 0
+        (site.pages + site.documents).each do |doc|
           next unless embeddable?(doc)
 
-          # Parse the HTML document, render and embed the diagrams, then convert it back into HTML
-          parsed_page = Nokogiri::HTML(doc.output)
-          embed_page(connection, parsed_page)
-          doc.output = parsed_page.to_html
+          # Render all supported diagram descriptions in the document
+          rendered_diag += embed_doc(connection, doc)
+        end
+
+        unless rendered_diag.zero?
+          puts "[jekyll-kroki] Rendered #{rendered_diag} diagrams using Kroki instance at '#{kroki_url}'"
         end
       rescue StandardError => e
         exit(e)
       end
 
-      # Renders all diagram descriptions in a document and embeds them as inline SVGs in the HTML source.
+      # Renders all supported diagram descriptions in a document and embeds them as inline SVGs in the HTML source.
       #
       # @param [Faraday::Connection] The Faraday connection to use
       # @param [Nokogiri::HTML4::Document] The parsed HTML document
-      def embed_page(connection, parsed_doc)
+      # @param [Integer] The number of rendered diagrams
+      def embed_doc(connection, doc)
+        # Parse the HTML document
+        parsed_doc = Nokogiri::HTML(doc.output)
+
+        rendered_diag = 0
         SUPPORTED_LANGUAGES.each do |language|
           parsed_doc.css("code[class~='language-#{language}']").each do |diagram_desc|
             # Replace the diagram description with the SVG representation rendered by Kroki
             diagram_desc.replace(render_diagram(connection, diagram_desc, language))
+            rendered_diag += 1
           end
         end
+
+        # Convert the document back to HTML
+        doc.output = parsed_doc.to_html
+        rendered_diag
       end
 
       # Renders a single diagram description using Kroki.
@@ -80,10 +91,10 @@ module Jekyll
       end
 
       # Sanitises a rendered diagram. Only <script> elements are removed, which is the most minimal / naive
-      # implementation possible and is definitely not secure.
+      # implementation possible.
       #
       # @param [String] The diagram to santise in SVG format
-      # @return [String] The sanitized diagram in SVG format
+      # @return [String] The sanitised diagram
       def sanitise_diagram(diagram_svg)
         parsed_svg = Nokogiri::XML(diagram_svg)
         parsed_svg.xpath('//*[name()="script"]').each(&:remove)
