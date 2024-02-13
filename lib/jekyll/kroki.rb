@@ -76,9 +76,7 @@ module Jekyll
         begin
           response = connection.get("#{language}/svg/#{encode_diagram(diagram_desc.text)}")
         rescue Faraday::Error => e
-          raise "'#{connection.url_prefix}' does not point to a valid Kroki instance" if e.response.nil?
-
-          raise e.response[:body]
+          raise e.message
         end
         expected_content_type = "image/svg+xml"
         returned_content_type = response.headers[:content_type]
@@ -163,7 +161,7 @@ module Jekyll
         file, line_number, caller = e.backtrace[caller_index].split(":")
         caller = caller.tr("`", "'")
         warn %([jekyll-kroki] "#{error.message}" #{caller} on line #{line_number} of #{file}).red
-        exec "echo ''"
+        exec "exit 1"
       end
     end
   end
