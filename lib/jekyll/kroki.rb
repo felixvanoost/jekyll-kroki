@@ -59,6 +59,12 @@ module Jekyll
             diagram_desc.replace(render_diagram(connection, diagram_desc, language))
             rendered_diag += 1
           end
+          # sometimes jekyll generates a code and sometimes a div tag. let's replace both
+          parsed_doc.css("div[class~='language-#{language}']").each do |diagram_desc|
+            diagram_desc.replace(render_diagram(connection, diagram_desc, language))
+            rendered_diag += 1
+          end
+
         end
 
         # Convert the document back to HTML
