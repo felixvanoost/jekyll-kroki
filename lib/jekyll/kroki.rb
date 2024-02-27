@@ -17,6 +17,7 @@ module Jekyll
     SUPPORTED_LANGUAGES = %w[actdiag blockdiag bpmn bytefield c4plantuml d2 dbml diagramsnet ditaa erd excalidraw
                              graphviz mermaid nomnoml nwdiag packetdiag pikchr plantuml rackdiag seqdiag structurizr
                              svgbob symbolator tikz umlet vega vegalite wavedrom wireviz].freeze
+    EXPECTED_HTML_TAGS = %w[code div].freeze
     HTTP_MAX_RETRIES = 3
 
     class << self
@@ -54,10 +55,12 @@ module Jekyll
 
         rendered_diag = 0
         SUPPORTED_LANGUAGES.each do |language|
-          parsed_doc.css("code[class~='language-#{language}']").each do |diagram_desc|
-            # Replace the diagram description with the SVG representation rendered by Kroki
-            diagram_desc.replace(render_diagram(connection, diagram_desc, language))
-            rendered_diag += 1
+          EXPECTED_HTML_TAGS.each do |tag|
+            parsed_doc.css("#{tag}[class~='language-#{language}']").each do |diagram_desc|
+              # Replace the diagram description with the SVG representation rendered by Kroki
+              diagram_desc.replace(render_diagram(connection, diagram_desc, language))
+              rendered_diag += 1
+            end
           end
         end
 
