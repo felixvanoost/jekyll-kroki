@@ -54,8 +54,8 @@ module Jekyll
         parsed_doc = Nokogiri::HTML(doc.output)
 
         rendered_diag = 0
-          SUPPORTED_LANGUAGES.each do |language|
-            EXPECTED_HTML_TAGS.each do |tag|
+        SUPPORTED_LANGUAGES.each do |language|
+          EXPECTED_HTML_TAGS.each do |tag|
             parsed_doc.css("#{tag}[class~='language-#{language}']").each do |diagram_desc|
               # Replace the diagram description with the SVG representation rendered by Kroki
               diagram_desc.replace(render_diagram(connection, diagram_desc, language))
