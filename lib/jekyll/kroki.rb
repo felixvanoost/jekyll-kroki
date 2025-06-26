@@ -33,18 +33,18 @@ module Jekyll
       def embed_site(site)
         # Get the URL of the Kroki instance.
         kroki_url = kroki_url(site.config)
+        rendered_diag = Concurrent::AtomicFixnum.new(0)
         connection = connection_pool(kroki_url, 5).checkout
 
-        rendered_diag = 0
         (site.pages + site.documents).each do |doc|
           next unless embeddable?(doc)
 
           # Render all supported diagram descriptions in the document.
-          rendered_diag += embed_doc(connection, doc)
+          rendered_diag.increment(embed_doc(connection, doc))
         end
 
-        unless rendered_diag.zero?
-          puts "[jekyll-kroki] Rendered #{rendered_diag} diagrams using Kroki instance at '#{kroki_url}'"
+        unless rendered_diag.value.zero?
+          puts "[jekyll-kroki] Rendered #{rendered_diag.value} diagrams using Kroki instance at '#{kroki_url}'"
         end
       rescue StandardError => e
         exit(e)
