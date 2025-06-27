@@ -2,8 +2,7 @@
 
 require_relative "kroki/version"
 
-require "concurrent"
-require "connection_pool"
+require "async"
 require "base64"
 require "faraday"
 require "faraday/retry"
@@ -20,11 +19,10 @@ module Jekyll
                              graphviz mermaid nomnoml nwdiag packetdiag pikchr plantuml rackdiag seqdiag structurizr
                              svgbob symbolator tikz umlet vega vegalite wavedrom wireviz].freeze
     EXPECTED_HTML_TAGS = %w[code div].freeze
-    HTTP_DEFAULT_CONNECTIONS = 2
     HTTP_MAX_RETRIES = 3
-    HTTP_RETRY_BACKOFF_FACTOR = 2
-    HTTP_RETRY_INTERVAL_SECONDS = 0.1
+    HTTP_RETRY_INTERVAL_BACKOFF_FACTOR = 2
     HTTP_RETRY_INTERVAL_RANDOMNESS = 0.5
+    HTTP_RETRY_INTERVAL_SECONDS = 0.1
     HTTP_TIMEOUT_SECONDS = 5
 
     class << self
@@ -34,36 +32,18 @@ module Jekyll
       def embed_site(site)
         # Get the URL of the Kroki instance.
         kroki_url = kroki_url(site.config)
-        rendered_diag = Concurrent::AtomicFixnum.new(0)
+        connection = setup_connection(kroki_url)
 
-        num_https_connections = det_connection_count(site.config, site.pages.count + site.documents.count)
-        puts "[jekyll-kroki] Rendering diagrams with up to #{num_https_connections} threads"
-
-        # Use a thread pool and connection pool with the number of threads equal to the number of processor cores
-        executor = Concurrent::RubyThreadPoolExecutor.new(max_threads: num_https_connections)
-        connection_pool = connection_pool(kroki_url, num_https_connections)
-
+        rendered_diag = 0
         (site.pages + site.documents).each do |doc|
-          executor.post do
-            if embeddable?(doc)
-              connection = connection_pool.checkout
-              begin
-                # Render all supported diagram descriptions in the document.
-                rendered_diag.increment(embed_doc(connection, doc))
-              ensure
-                connection_pool.checkin
-              end
-            end
-          rescue StandardError => e
-            puts "[jekyll-kroki] #{e.class}: #{e.message}\n#{e.backtrace.join("\n")}"
-          end
+          next unless embeddable?(doc)
+
+          # Render all supported diagram descriptions in the document.
+          rendered_diag += embed_doc(connection, doc)
         end
 
-        executor.shutdown
-        executor.wait_for_termination
-
-        unless rendered_diag.value.zero?
-          puts "[jekyll-kroki] Rendered #{rendered_diag.value} diagrams using Kroki instance at '#{kroki_url}'"
+        unless rendered_diag.zero?
+          puts "[jekyll-kroki] Rendered #{rendered_diag} diagrams using Kroki instance at '#{kroki_url}'"
         end
       rescue StandardError => e
         exit(e)
@@ -77,19 +57,33 @@ module Jekyll
       def embed_doc(connection, doc)
         # Parse the HTML document
         parsed_doc = Nokogiri::HTML(doc.output)
-
         rendered_diag = 0
-        SUPPORTED_LANGUAGES.each do |language|
-          EXPECTED_HTML_TAGS.each do |tag|
-            parsed_doc.css("#{tag}[class~='language-#{language}']").each do |diagram_desc|
-              # Replace the diagram description with the SVG representation rendered by Kroki
-              diagram_desc.replace(render_diagram(connection, diagram_desc, language))
-              rendered_diag += 1
+
+        # Use Async to send diagram requests concurrently.
+        Async do |diagram|
+          diagrams = []
+          SUPPORTED_LANGUAGES.each do |language|
+            EXPECTED_HTML_TAGS.each do |tag|
+              parsed_doc.css("#{tag}[class~='language-#{language}']").each do |diagram_desc|
+                diagrams << diagram.async do
+                  # Replace the diagram description with the SVG representation rendered by Kroki.
+                  diagram_desc.replace(render_diagram(connection, diagram_desc, language))
+
+                  # Return 1 as the diagram was rendered successfully.
+                  1
+                rescue StandardError => e
+                  warn "[jekyll-kroki] Error rendering diagram: #{e.message}".red
+                  0
+                end
+              end
             end
           end
+
+          # Wait for all the diagrams to be embedded and sum up the total.
+          rendered_diag = diagrams.map(&:wait).sum
         end
 
-        # Convert the document back to HTML
+        # Convert the document back to HTML.
         doc.output = parsed_doc.to_html
         rendered_diag
       end
@@ -136,28 +130,17 @@ module Jekyll
         Base64.urlsafe_encode64(Zlib.deflate(diagram_desc))
       end
 
-      # Creates a pool of Faraday connections.
-      #
-      # @param [URI::HTTP] The URL of the Kroki instance.
-      # @param [Integer] The number of Faraday connections to create in the pool.
-      def connection_pool(kroki_url, size)
-        ConnectionPool.new(size: size, timeout: HTTP_TIMEOUT_SECONDS) do
-          setup_connection(kroki_url, HTTP_TIMEOUT_SECONDS)
-        end
-      end
-
       # Sets up a new Faraday connection.
       #
       # @param [URI::HTTP] The URL of the Kroki instance.
       # @return [Faraday::Connection] The Faraday connection.
-      # @param [Integer] The connection timeout period in seconds.
-      def setup_connection(kroki_url, timeout)
+      def setup_connection(kroki_url)
         retry_options = { max: HTTP_MAX_RETRIES, interval: HTTP_RETRY_INTERVAL_SECONDS,
                           interval_randomness: HTTP_RETRY_INTERVAL_RANDOMNESS,
-                          backoff_factor: HTTP_RETRY_BACKOFF_FACTOR,
+                          backoff_factor: HTTP_RETRY_INTERVAL_BACKOFF_FACTOR,
                           exceptions: [Faraday::RequestTimeoutError, Faraday::ServerError] }
 
-        Faraday.new(url: kroki_url, request: { timeout: timeout }) do |builder|
+        Faraday.new(url: kroki_url, request: { timeout: HTTP_TIMEOUT_SECONDS }) do |builder|
           builder.adapter :httpx, persistent: true
           builder.request :retry, retry_options
           builder.response :json, content_type: /\bjson$/
@@ -180,20 +163,6 @@ module Jekyll
         end
       end
 
-      # Determines the number of HTTP connections + threads to use when embedding the diagrams.
-      #
-      # @param The Jekyll site configuration.
-      # @param [Integer] The number of documents in the Jekyll site.
-      def det_connection_count(config, documents)
-        limit = if config.key?("kroki") && config["kroki"].key?("http_connections")
-                  config["kroki"]["http_connections"]
-                else
-                  HTTP_DEFAULT_CONNECTIONS
-                end
-
-        [documents, limit].min
-      end
-
       # Determines whether a document may contain embeddable diagram descriptions - it is in HTML format and is either
       # a Jekyll::Page or writeable Jekyll::Document.
       #
@@ -214,7 +183,7 @@ module Jekyll
         raise error
       rescue StandardError => e
         file, line_number, caller = e.backtrace[caller_index].split(":")
-        caller = caller.tr("`", "'")
+        caller = caller.tr("", "'")
         warn %([jekyll-kroki] "#{error.message}" #{caller} on line #{line_number} of #{file}).red
         exec "exit 1"
       end
