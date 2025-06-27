@@ -28,6 +28,7 @@ Gem::Specification.new do |spec|
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
 
+  spec.add_runtime_dependency "async", ["~> 2.25"]
   spec.add_runtime_dependency "faraday", ["~> 2.7"]
   spec.add_runtime_dependency "faraday-retry", ["~> 2.2"]
   spec.add_runtime_dependency "httpx", ["~> 1.1"]

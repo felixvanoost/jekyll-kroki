@@ -48,6 +48,16 @@ module Jekyll
       refute ::Jekyll::Kroki.embeddable?(doc)
       doc.verify
     end
+
+    def test_non_html_embeddable_document
+      doc = Minitest::Mock.new
+      doc.expect(:output_ext, ".html")
+      doc.expect(:is_a?, false, [Jekyll::Page]) # Simulate that it's not a Jekyll::Page
+      doc.expect(:write?, false) # The document cannot be written, so it's not embeddable
+
+      refute ::Jekyll::Kroki.embeddable?(doc) # Expecting false (non-embeddable document)
+      doc.verify
+    end
   end
 
   class TestKrokiUtils < Minitest::Test
@@ -128,7 +138,7 @@ module Jekyll
       @connection = Minitest::Mock.new
     end
 
-    def test_embed_doc
+    def test_embed_single_doc
       doc = Minitest::Mock.new
       doc.expect(:output, "<div class='language-mermaid'>graph TD; A-->B;</div>")
       doc.expect(:output=, nil, [String])
@@ -140,7 +150,7 @@ module Jekyll
       encoded_diagram = Base64.urlsafe_encode64(Zlib.deflate("graph TD; A-->B;"))
       @connection.expect(:get, response, ["mermaid/svg/#{encoded_diagram}"])
 
-      rendered_diag = ::Jekyll::Kroki.embed_doc(@connection, doc)
+      rendered_diag = ::Jekyll::Kroki.embed_single_doc(@connection, doc)
       assert_equal 1, rendered_diag
 
       @connection.verify
