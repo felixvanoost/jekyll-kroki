@@ -33,13 +33,22 @@ module Jekyll
         # Get the URL of the Kroki instance.
         kroki_url = kroki_url(site.config)
         connection = setup_connection(kroki_url)
-
         rendered_diag = 0
-        (site.pages + site.documents).each do |doc|
-          next unless embeddable?(doc)
 
-          # Render all supported diagram descriptions in the document.
-          rendered_diag += embed_doc(connection, doc)
+        Async do |task|
+          tasks = (site.pages + site.documents).map do |doc|
+            next unless embeddable?(doc)
+
+            # Process each document concurrently.
+            task.async do
+              embed_doc(connection, doc)
+            rescue StandardError => e
+              warn "[jekyll-kroki] Error rendering diagram: #{e.message}".red
+            end
+          end.compact
+
+          # Wait for all the tasks to finish.
+          rendered_diag = tasks.map(&:wait).sum
         end
 
         unless rendered_diag.zero?
@@ -55,32 +64,18 @@ module Jekyll
       # @param [Nokogiri::HTML4::Document] The parsed HTML document.
       # @param [Integer] The number of rendered diagrams.
       def embed_doc(connection, doc)
-        # Parse the HTML document
+        # Parse the HTML document.
         parsed_doc = Nokogiri::HTML(doc.output)
+
         rendered_diag = 0
-
-        # Use Async to send diagram requests concurrently.
-        Async do |diagram|
-          diagrams = []
-          SUPPORTED_LANGUAGES.each do |language|
-            EXPECTED_HTML_TAGS.each do |tag|
-              parsed_doc.css("#{tag}[class~='language-#{language}']").each do |diagram_desc|
-                diagrams << diagram.async do
-                  # Replace the diagram description with the SVG representation rendered by Kroki.
-                  diagram_desc.replace(render_diagram(connection, diagram_desc, language))
-
-                  # Return 1 as the diagram was rendered successfully.
-                  1
-                rescue StandardError => e
-                  warn "[jekyll-kroki] Error rendering diagram: #{e.message}".red
-                  0
-                end
-              end
+        SUPPORTED_LANGUAGES.each do |language|
+          EXPECTED_HTML_TAGS.each do |tag|
+            parsed_doc.css("#{tag}[class~='language-#{language}']").each do |diagram_desc|
+              # Replace the diagram description with the SVG representation rendered by Kroki.
+              diagram_desc.replace(render_diagram(connection, diagram_desc, language))
+              rendered_diag += 1
             end
           end
-
-          # Wait for all the diagrams to be embedded and sum up the total.
-          rendered_diag = diagrams.map(&:wait).sum
         end
 
         # Convert the document back to HTML.
