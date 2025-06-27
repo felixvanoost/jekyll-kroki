@@ -26,13 +26,28 @@ module Jekyll
     HTTP_TIMEOUT_SECONDS = 5
 
     class << self
-      # Renders and embeds all diagram descriptions in a Jekyll site using Kroki.
+      # Renders and embeds all diagram descriptions in the given Jekyll site using Kroki.
       #
       # @param [Jekyll::Site] The Jekyll site to embed diagrams in.
       def embed_site(site)
-        # Get the URL of the Kroki instance.
         kroki_url = kroki_url(site.config)
         connection = setup_connection(kroki_url)
+
+        rendered_diag = embed_docs_in_site(site, connection)
+        unless rendered_diag.zero?
+          puts "[jekyll-kroki] Rendered #{rendered_diag} diagrams using Kroki instance at '#{kroki_url}'"
+        end
+      rescue StandardError => e
+        exit(e)
+      end
+
+      # Renders the diagram descriptions in all Jekyll pages and documents in the given Jekyll site. This method
+      # performs concurrent rendering of each page / document.
+      #
+      # @param [Jekyll::Site] The Jekyll site to embed diagrams in.
+      # @param [Faraday::Connection] The Faraday connection to use.
+      # @return [Integer] The number of successfully rendered diagrams.
+      def embed_docs_in_site(site, connection)
         rendered_diag = 0
 
         Async do |task|
@@ -41,7 +56,7 @@ module Jekyll
 
             # Process each document concurrently.
             task.async do
-              embed_doc(connection, doc)
+              embed_single_doc(connection, doc)
             rescue StandardError => e
               warn "[jekyll-kroki] Error rendering diagram: #{e.message}".red
             end
@@ -51,19 +66,16 @@ module Jekyll
           rendered_diag = tasks.map(&:wait).sum
         end
 
-        unless rendered_diag.zero?
-          puts "[jekyll-kroki] Rendered #{rendered_diag} diagrams using Kroki instance at '#{kroki_url}'"
-        end
-      rescue StandardError => e
-        exit(e)
+        rendered_diag
       end
 
-      # Renders all supported diagram descriptions in a document and embeds them as inline SVGs in the HTML source.
+      # Renders the supported diagram descriptions in a single document and embeds them as inline SVGs in the HTML
+      # source.
       #
       # @param [Faraday::Connection] The Faraday connection to use.
       # @param [Nokogiri::HTML4::Document] The parsed HTML document.
-      # @param [Integer] The number of rendered diagrams.
-      def embed_doc(connection, doc)
+      # @return [Integer] The number of successfully rendered diagrams.
+      def embed_single_doc(connection, doc)
         # Parse the HTML document.
         parsed_doc = Nokogiri::HTML(doc.output)
 
@@ -151,11 +163,10 @@ module Jekyll
         if config.key?("kroki") && config["kroki"].key?("url")
           url = config["kroki"]["url"]
           raise TypeError, "'url' is not a valid HTTP URL" unless URI.parse(url).is_a?(URI::HTTP)
-
-          URI(url)
         else
-          URI(KROKI_DEFAULT_URL)
+          url = KROKI_DEFAULT_URL
         end
+        URI(url)
       end
 
       # Determines whether a document may contain embeddable diagram descriptions - it is in HTML format and is either
