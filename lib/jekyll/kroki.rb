@@ -3,6 +3,7 @@
 require_relative "kroki/version"
 
 require "async"
+require "async/semaphore"
 require "base64"
 require "faraday"
 require "faraday/retry"
@@ -23,7 +24,8 @@ module Jekyll
     HTTP_RETRY_INTERVAL_BACKOFF_FACTOR = 2
     HTTP_RETRY_INTERVAL_RANDOMNESS = 0.5
     HTTP_RETRY_INTERVAL_SECONDS = 0.1
-    HTTP_TIMEOUT_SECONDS = 5
+    HTTP_TIMEOUT_SECONDS = 15
+    MAX_CONCURRENT_DOCS = 10
 
     class << self
       # Renders and embeds all diagram descriptions in the given Jekyll site using Kroki.
@@ -49,21 +51,23 @@ module Jekyll
       # @return [Integer] The number of successfully rendered diagrams.
       def embed_docs_in_site(site, connection)
         rendered_diag = 0
+        semaphore = Async::Semaphore.new(MAX_CONCURRENT_DOCS)
 
         Async do |task|
           tasks = (site.pages + site.documents).map do |doc|
             next unless embeddable?(doc)
 
-            # Process each document concurrently.
             task.async do
-              embed_single_doc(connection, doc)
+              semaphore.async do
+                embed_single_doc(connection, doc)
+              end.wait
             rescue StandardError => e
               warn "[jekyll-kroki] Error rendering diagram: #{e.message}".red
+              0
             end
           end.compact
 
-          # Wait for all the tasks to finish.
-          rendered_diag = tasks.map(&:wait).sum
+          rendered_diag = tasks.sum(&:wait)
         end
 
         rendered_diag

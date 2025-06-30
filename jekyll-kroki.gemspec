@@ -16,6 +16,7 @@ Gem::Specification.new do |spec|
 
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = spec.homepage
+  spec.metadata["rubygems_mfa_required"] = "true"
 
   # Load the files that are versioned in Git into the RubyGem.
   spec.files = Dir.chdir(__dir__) do
@@ -28,12 +29,12 @@ Gem::Specification.new do |spec|
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
 
-  spec.add_runtime_dependency "async", ["~> 2.25"]
-  spec.add_runtime_dependency "faraday", ["~> 2.7"]
-  spec.add_runtime_dependency "faraday-retry", ["~> 2.2"]
-  spec.add_runtime_dependency "httpx", ["~> 1.1"]
-  spec.add_runtime_dependency "jekyll", ["~> 4"]
-  spec.add_runtime_dependency "nokogiri", ["~> 1.15"]
+  spec.add_dependency "async", ["~> 2.25"]
+  spec.add_dependency "faraday", ["~> 2.7"]
+  spec.add_dependency "faraday-retry", ["~> 2.2"]
+  spec.add_dependency "httpx", ["~> 1.1"]
+  spec.add_dependency "jekyll", ["~> 4"]
+  spec.add_dependency "nokogiri", ["~> 1.15"]
 
   spec.add_development_dependency "minitest", ["~> 5.0"]
   spec.add_development_dependency "rake", ["~> 13.0"]
