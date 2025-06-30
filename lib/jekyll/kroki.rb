@@ -3,6 +3,7 @@
 require_relative "kroki/version"
 
 require "async"
+require "async/semaphore"
 require "base64"
 require "faraday"
 require "faraday/retry"
@@ -23,7 +24,8 @@ module Jekyll
     HTTP_RETRY_INTERVAL_BACKOFF_FACTOR = 2
     HTTP_RETRY_INTERVAL_RANDOMNESS = 0.5
     HTTP_RETRY_INTERVAL_SECONDS = 0.1
-    HTTP_TIMEOUT_SECONDS = 5
+    HTTP_TIMEOUT_SECONDS = 15
+    MAX_CONCURRENT_DOCS = 8
 
     class << self
       # Renders and embeds all diagram descriptions in the given Jekyll site using Kroki.
@@ -41,39 +43,51 @@ module Jekyll
         exit(e)
       end
 
-      # Renders the diagram descriptions in all Jekyll pages and documents in the given Jekyll site. This method
-      # performs concurrent rendering of each page / document.
+      # Renders the diagram descriptions in all Jekyll pages and documents in the given Jekyll site. Pages / documents
+      # are rendered concurrently up to the limit defined by MAX_CONCURRENT_DOCS.
       #
       # @param [Jekyll::Site] The Jekyll site to embed diagrams in.
       # @param [Faraday::Connection] The Faraday connection to use.
       # @return [Integer] The number of successfully rendered diagrams.
       def embed_docs_in_site(site, connection)
         rendered_diag = 0
+        semaphore = Async::Semaphore.new(MAX_CONCURRENT_DOCS)
 
         Async do |task|
           tasks = (site.pages + site.documents).map do |doc|
             next unless embeddable?(doc)
 
-            # Process each document concurrently.
-            task.async do
-              embed_single_doc(connection, doc)
-            rescue StandardError => e
-              warn "[jekyll-kroki] Error rendering diagram: #{e.message}".red
-            end
+            async_embed_single_doc(task, semaphore, connection, doc)
           end.compact
 
-          # Wait for all the tasks to finish.
-          rendered_diag = tasks.map(&:wait).sum
+          rendered_diag = tasks.sum(&:wait)
         end
 
         rendered_diag
+      end
+
+      # Renders the supported diagram descriptions in a single document asynchronously, respecting the concurrency limit
+      # imposed by the provided semaphore.
+      #
+      # @param [Async::Task] The parent async task to spawn a child task from.
+      # @param [Async::Semaphore] A semaphore to limit concurrency.
+      # @param [Faraday::Connection] The Faraday connection to use.
+      # @param [Jekyll::Page, Jekyll::Document] The document to process.
+      # @return [Integer] The number of successfully rendered diagrams.
+      def async_embed_single_doc(task, semaphore, connection, doc)
+        task.async do
+          semaphore.async { embed_single_doc(connection, doc) }.wait
+        rescue StandardError => e
+          warn "[jekyll-kroki] Error rendering diagram: #{e.message}".red
+          0
+        end
       end
 
       # Renders the supported diagram descriptions in a single document and embeds them as inline SVGs in the HTML
       # source.
       #
       # @param [Faraday::Connection] The Faraday connection to use.
-      # @param [Nokogiri::HTML4::Document] The parsed HTML document.
+      # @param [Jekyll::Page, Jekyll::Document] The document to process.
       # @return [Integer] The number of successfully rendered diagrams.
       def embed_single_doc(connection, doc)
         # Parse the HTML document.
