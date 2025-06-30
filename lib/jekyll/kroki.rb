@@ -25,7 +25,7 @@ module Jekyll
     HTTP_RETRY_INTERVAL_RANDOMNESS = 0.5
     HTTP_RETRY_INTERVAL_SECONDS = 0.1
     HTTP_TIMEOUT_SECONDS = 15
-    MAX_CONCURRENT_DOCS = 10
+    MAX_CONCURRENT_DOCS = 8
 
     class << self
       # Renders and embeds all diagram descriptions in the given Jekyll site using Kroki.
