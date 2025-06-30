@@ -203,21 +203,16 @@ module Jekyll
 
     def test_embed_docs_handles_errors
       site = Minitest::Mock.new
-      good_doc = create_mock_doc("graph TD; A-->B;")
-      bad_doc = create_mock_doc("fail")
-
       site.expect(:pages, [])
+      bad_doc = create_mock_doc("fail")
+      good_doc = create_mock_doc("graph TD; A-->B;")
       site.expect(:documents, [bad_doc, good_doc])
 
       connection = Minitest::Mock.new
 
-      stub = lambda do |_conn, doc|
-        raise "bad!" if doc.output.include?("fail")
-
-        1
-      end
-
-      result = Jekyll::Kroki.stub(:embed_single_doc, stub) do
+      result = Jekyll::Kroki.stub(:embed_single_doc, lambda { |_conn, doc|
+        doc.output.include?("fail") ? raise("bad!") : 1
+      }) do
         Jekyll::Kroki.embed_docs_in_site(site, connection)
       end
 

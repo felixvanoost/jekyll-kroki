@@ -43,8 +43,8 @@ module Jekyll
         exit(e)
       end
 
-      # Renders the diagram descriptions in all Jekyll pages and documents in the given Jekyll site. This method
-      # performs concurrent rendering of each page / document.
+      # Renders the diagram descriptions in all Jekyll pages and documents in the given Jekyll site. Pages / documents
+      # are rendered concurrently up to the limit defined by MAX_CONCURRENT_DOCS.
       #
       # @param [Jekyll::Site] The Jekyll site to embed diagrams in.
       # @param [Faraday::Connection] The Faraday connection to use.
@@ -57,14 +57,7 @@ module Jekyll
           tasks = (site.pages + site.documents).map do |doc|
             next unless embeddable?(doc)
 
-            task.async do
-              semaphore.async do
-                embed_single_doc(connection, doc)
-              end.wait
-            rescue StandardError => e
-              warn "[jekyll-kroki] Error rendering diagram: #{e.message}".red
-              0
-            end
+            async_embed_single_doc(task, semaphore, connection, doc)
           end.compact
 
           rendered_diag = tasks.sum(&:wait)
@@ -73,11 +66,28 @@ module Jekyll
         rendered_diag
       end
 
+      # Renders the supported diagram descriptions in a single document asynchronously, respecting the concurrency limit
+      # imposed by the provided semaphore.
+      #
+      # @param [Async::Task] The parent async task to spawn a child task from.
+      # @param [Async::Semaphore] A semaphore to limit concurrency.
+      # @param [Faraday::Connection] The Faraday connection to use.
+      # @param [Jekyll::Page, Jekyll::Document] The document to process.
+      # @return [Integer] The number of successfully rendered diagrams.
+      def async_embed_single_doc(task, semaphore, connection, doc)
+        task.async do
+          semaphore.async { embed_single_doc(connection, doc) }.wait
+        rescue StandardError => e
+          warn "[jekyll-kroki] Error rendering diagram: #{e.message}".red
+          0
+        end
+      end
+
       # Renders the supported diagram descriptions in a single document and embeds them as inline SVGs in the HTML
       # source.
       #
       # @param [Faraday::Connection] The Faraday connection to use.
-      # @param [Nokogiri::HTML4::Document] The parsed HTML document.
+      # @param [Jekyll::Page, Jekyll::Document] The document to process.
       # @return [Integer] The number of successfully rendered diagrams.
       def embed_single_doc(connection, doc)
         # Parse the HTML document.
