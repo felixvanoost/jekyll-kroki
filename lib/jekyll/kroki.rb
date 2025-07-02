@@ -162,7 +162,7 @@ module Jekyll
       # @param [Integer] The timeout value in seconds.
       # @return [Faraday::Connection] The Faraday connection.
       def setup_connection(kroki_url, retries, timeout)
-        retry_options = { max: http_retries, interval: HTTP_RETRY_INTERVAL,
+        retry_options = { max: retries, interval: HTTP_RETRY_INTERVAL,
                           interval_randomness: HTTP_RETRY_INTERVAL_RANDOMNESS,
                           backoff_factor: HTTP_RETRY_INTERVAL_BACKOFF_FACTOR,
                           exceptions: [Faraday::RequestTimeoutError, Faraday::ServerError] }
@@ -182,7 +182,7 @@ module Jekyll
       def get_kroki_url(config)
         url = config.fetch("kroki", {}).fetch("url", DEFAULT_KROKI_URL)
         raise TypeError, "'url' is not a valid HTTP URL" unless URI.parse(url).is_a?(URI::HTTP)
-        
+
         URI(url)
       end
 
@@ -207,11 +207,10 @@ module Jekyll
       # @param The Jekyll site configuration.
       # @return [Integer] The maximum number of documents to render concurrently.
       def get_max_concurrent_docs(config)
-        config.fetch("kroki", {}).fetch("max_concurrent_docs", MAX_CONCURRENT_DOCS)
+        config.fetch("kroki", {}).fetch("max_concurrent_docs", DEFAULT_MAX_CONCURRENT_DOCS)
       end
 
-
-      # Determines whether a document may contain embeddable diagram descriptions - it is in HTML format and is either
+      # Determines whether a document may contain embeddable diagram descriptions; it is in HTML format and is either
       # a Jekyll::Page or writeable Jekyll::Document.
       #
       # @param [Jekyll::Page or Jekyll::Document] The document to check for embeddability.
