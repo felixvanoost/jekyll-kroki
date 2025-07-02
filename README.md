@@ -49,14 +49,24 @@ The server-side nature of Kroki means that you don't have to deal with installin
 Kroki is available either as a free service or self-hosted using Docker. Organisations that frequently build large Jekyll sites with many diagrams or want maximum control over their data have the option of running their own Kroki instance to provide consistency and use compute resources efficiently.
 
 ### Configuration
-You can specify the URL of the Kroki instance to use in the Jekyll `_config.yml` file:
+You can specify the following parameters in the Jekyll `_config.yml` file:
+
+| Parameter | Default value | Description |
+| --------- | ------------- | ----------- |
+| `url` | `https://kroki.io` | The URL of the Kroki instance to use |
+| `http_retries` | `3` | The number of HTTP retries |
+| `http_timeout` | `15` | The HTTP timeout value in seconds |
+| `max_concurrent_docs` | `8` | The maximum number of Jekyll documents to render concurrently |
+
+For example:
 
 ```yaml
 kroki:
   url: "https://my-kroki.server"
+  http_retries: 3
+  http_timeout: 15
+  max_concurrent_docs: 8
 ```
-
-This is useful if you want to run a Kroki instance locally or your organisation maintains its own private Kroki server. The public Kroki instance https://kroki.io is used by default.
 
 ### Security
 Embedding diagrams as SVGs directly within HTML files can be dangerous. You should only use a Kroki instance that you trust (or run your own!). For additional security, you can configure a [Content Security Policy (CSP)](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP) using custom Webrick headers in the Jekyll `_config.yml` file:

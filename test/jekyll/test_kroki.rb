@@ -14,25 +14,25 @@ module Jekyll
       url = "https://rubygems.org/"
       config = { "kroki" => { "url" => url } }
 
-      assert_equal ::Jekyll::Kroki.kroki_url(config), URI(url)
+      assert_equal ::Jekyll::Kroki.get_kroki_url(config), URI(url)
     end
 
     def test_invalid_kroki_url
       url = "ht//rubygems.org/"
       config = { "kroki" => { "url" => url } }
-      assert_raises(TypeError) { ::Jekyll::Kroki.kroki_url(config) }
+      assert_raises(TypeError) { ::Jekyll::Kroki.get_kroki_url(config) }
     end
 
     def test_missing_kroki_url
       config = { "kroki" => { "pi" => 3.14 } }
 
-      assert_equal ::Jekyll::Kroki.kroki_url(config), URI("https://kroki.io")
+      assert_equal ::Jekyll::Kroki.get_kroki_url(config), URI("https://kroki.io")
     end
 
     def test_missing_kroki_config
       config = { "another-plugin" => { "pi" => 3.14 } }
 
-      assert_equal ::Jekyll::Kroki.kroki_url(config), URI("https://kroki.io")
+      assert_equal ::Jekyll::Kroki.get_kroki_url(config), URI("https://kroki.io")
     end
   end
 
@@ -68,7 +68,9 @@ module Jekyll
   class TestKrokiUtils < Minitest::Test
     def test_setup_connection
       kroki_url = "https://kroki.io"
-      connection = ::Jekyll::Kroki.setup_connection(kroki_url)
+      retries = 3
+      timeout = 15
+      connection = ::Jekyll::Kroki.setup_connection(kroki_url, retries, timeout)
 
       assert_instance_of Faraday::Connection, connection
     end
@@ -186,6 +188,7 @@ module Jekyll
       docs = Array.new(15) { |i| create_mock_doc("graph TD; A#{i}-->B#{i};") }
       site.expect(:pages, [])
       site.expect(:documents, docs)
+      max_concurrent_docs = 8
 
       connection = Minitest::Mock.new
       call_count = 0
@@ -194,7 +197,7 @@ module Jekyll
         call_count += 1
         1
       }) do
-        Jekyll::Kroki.embed_docs_in_site(site, connection)
+        Jekyll::Kroki.embed_docs_in_site(site, connection, max_concurrent_docs)
       end
 
       assert_equal 15, call_count
@@ -207,13 +210,14 @@ module Jekyll
       bad_doc = create_mock_doc("fail")
       good_doc = create_mock_doc("graph TD; A-->B;")
       site.expect(:documents, [bad_doc, good_doc])
+      max_concurrent_docs = 8
 
       connection = Minitest::Mock.new
 
       result = Jekyll::Kroki.stub(:embed_single_doc, lambda { |_conn, doc|
         doc.output.include?("fail") ? raise("bad!") : 1
       }) do
-        Jekyll::Kroki.embed_docs_in_site(site, connection)
+        Jekyll::Kroki.embed_docs_in_site(site, connection, max_concurrent_docs)
       end
 
       assert_equal 1, result
@@ -225,7 +229,7 @@ module Jekyll
     def setup_mock_site
       site = Minitest::Mock.new
       config = { "kroki" => { "url" => "https://kroki.io" } }
-      site.expect(:config, config)
+      4.times { site.expect(:config, config) }
 
       doc = Minitest::Mock.new
       doc.expect(:output_ext, ".html")

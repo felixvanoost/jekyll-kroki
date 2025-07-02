@@ -15,27 +15,30 @@ require "zlib"
 module Jekyll
   # Converts diagram descriptions into images using Kroki.
   class Kroki
-    KROKI_DEFAULT_URL = "https://kroki.io"
+    DEFAULT_KROKI_URL = "https://kroki.io"
+    DEFAULT_HTTP_RETRIES = 3
+    DEFAULT_HTTP_TIMEOUT = 15
+    DEFAULT_MAX_CONCURRENT_DOCS = 8
+    EXPECTED_HTML_TAGS = %w[code div].freeze
+    HTTP_RETRY_INTERVAL_BACKOFF_FACTOR = 2
+    HTTP_RETRY_INTERVAL_RANDOMNESS = 0.5
+    HTTP_RETRY_INTERVAL = 0.1
     SUPPORTED_LANGUAGES = %w[actdiag blockdiag bpmn bytefield c4plantuml d2 dbml diagramsnet ditaa erd excalidraw
                              graphviz mermaid nomnoml nwdiag packetdiag pikchr plantuml rackdiag seqdiag structurizr
                              svgbob symbolator tikz umlet vega vegalite wavedrom wireviz].freeze
-    EXPECTED_HTML_TAGS = %w[code div].freeze
-    HTTP_MAX_RETRIES = 3
-    HTTP_RETRY_INTERVAL_BACKOFF_FACTOR = 2
-    HTTP_RETRY_INTERVAL_RANDOMNESS = 0.5
-    HTTP_RETRY_INTERVAL_SECONDS = 0.1
-    HTTP_TIMEOUT_SECONDS = 15
-    MAX_CONCURRENT_DOCS = 8
 
     class << self
       # Renders and embeds all diagram descriptions in the given Jekyll site using Kroki.
       #
       # @param [Jekyll::Site] The Jekyll site to embed diagrams in.
       def embed_site(site)
-        kroki_url = kroki_url(site.config)
-        connection = setup_connection(kroki_url)
+        kroki_url = get_kroki_url(site.config)
+        http_retries = get_http_retries(site.config)
+        http_timeout = get_http_timeout(site.config)
+        connection = setup_connection(kroki_url, http_retries, http_timeout)
 
-        rendered_diag = embed_docs_in_site(site, connection)
+        max_concurrent_docs = get_max_concurrent_docs(site.config)
+        rendered_diag = embed_docs_in_site(site, connection, max_concurrent_docs)
         unless rendered_diag.zero?
           puts "[jekyll-kroki] Rendered #{rendered_diag} diagrams using Kroki instance at '#{kroki_url}'"
         end
@@ -44,14 +47,15 @@ module Jekyll
       end
 
       # Renders the diagram descriptions in all Jekyll pages and documents in the given Jekyll site. Pages / documents
-      # are rendered concurrently up to the limit defined by MAX_CONCURRENT_DOCS.
+      # are rendered concurrently up to the limit defined by DEFAULT_MAX_CONCURRENT_DOCS.
       #
       # @param [Jekyll::Site] The Jekyll site to embed diagrams in.
       # @param [Faraday::Connection] The Faraday connection to use.
+      # @param [Integer] The maximum number of documents to render concurrently.
       # @return [Integer] The number of successfully rendered diagrams.
-      def embed_docs_in_site(site, connection)
+      def embed_docs_in_site(site, connection, max_concurrent_docs)
         rendered_diag = 0
-        semaphore = Async::Semaphore.new(MAX_CONCURRENT_DOCS)
+        semaphore = Async::Semaphore.new(max_concurrent_docs)
 
         Async do |task|
           tasks = (site.pages + site.documents).map do |doc|
@@ -154,14 +158,16 @@ module Jekyll
       # Sets up a new Faraday connection.
       #
       # @param [URI::HTTP] The URL of the Kroki instance.
+      # @param [Integer] The number of retries.
+      # @param [Integer] The timeout value in seconds.
       # @return [Faraday::Connection] The Faraday connection.
-      def setup_connection(kroki_url)
-        retry_options = { max: HTTP_MAX_RETRIES, interval: HTTP_RETRY_INTERVAL_SECONDS,
+      def setup_connection(kroki_url, retries, timeout)
+        retry_options = { max: retries, interval: HTTP_RETRY_INTERVAL,
                           interval_randomness: HTTP_RETRY_INTERVAL_RANDOMNESS,
                           backoff_factor: HTTP_RETRY_INTERVAL_BACKOFF_FACTOR,
                           exceptions: [Faraday::RequestTimeoutError, Faraday::ServerError] }
 
-        Faraday.new(url: kroki_url, request: { timeout: HTTP_TIMEOUT_SECONDS }) do |builder|
+        Faraday.new(url: kroki_url, request: { timeout: timeout }) do |builder|
           builder.adapter :httpx, persistent: true
           builder.request :retry, retry_options
           builder.response :json, content_type: /\bjson$/
@@ -173,17 +179,38 @@ module Jekyll
       #
       # @param The Jekyll site configuration.
       # @return [URI::HTTP] The URL of the Kroki instance.
-      def kroki_url(config)
-        if config.key?("kroki") && config["kroki"].key?("url")
-          url = config["kroki"]["url"]
-          raise TypeError, "'url' is not a valid HTTP URL" unless URI.parse(url).is_a?(URI::HTTP)
-        else
-          url = KROKI_DEFAULT_URL
-        end
+      def get_kroki_url(config)
+        url = config.fetch("kroki", {}).fetch("url", DEFAULT_KROKI_URL)
+        raise TypeError, "'url' is not a valid HTTP URL" unless URI.parse(url).is_a?(URI::HTTP)
+
         URI(url)
       end
 
-      # Determines whether a document may contain embeddable diagram descriptions - it is in HTML format and is either
+      # Gets the number of HTTP retries.
+      #
+      # @param The Jekyll site configuration.
+      # @return [Integer] The number of HTTP retries.
+      def get_http_retries(config)
+        config.fetch("kroki", {}).fetch("http_retries", DEFAULT_HTTP_RETRIES)
+      end
+
+      # Gets the HTTP timeout value.
+      #
+      # @param The Jekyll site configuration.
+      # @return [Integer] The HTTP timeout value in seconds.
+      def get_http_timeout(config)
+        config.fetch("kroki", {}).fetch("http_timeout", DEFAULT_HTTP_TIMEOUT)
+      end
+
+      # Gets the maximum number of documents to render concurrently.
+      #
+      # @param The Jekyll site configuration.
+      # @return [Integer] The maximum number of documents to render concurrently.
+      def get_max_concurrent_docs(config)
+        config.fetch("kroki", {}).fetch("max_concurrent_docs", DEFAULT_MAX_CONCURRENT_DOCS)
+      end
+
+      # Determines whether a document may contain embeddable diagram descriptions; it is in HTML format and is either
       # a Jekyll::Page or writeable Jekyll::Document.
       #
       # @param [Jekyll::Page or Jekyll::Document] The document to check for embeddability.
