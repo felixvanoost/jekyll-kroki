@@ -58,11 +58,11 @@ module Jekyll
         semaphore = Async::Semaphore.new(max_concurrent_docs)
 
         Async do |task|
-          tasks = (site.pages + site.documents).map do |doc|
+          tasks = (site.pages + site.documents).filter_map do |doc|
             next unless embeddable?(doc)
 
             async_embed_single_doc(task, semaphore, connection, doc)
-          end.compact
+          end
 
           rendered_diag = tasks.sum(&:wait)
         end
