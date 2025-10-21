@@ -12,7 +12,7 @@ Gem::Specification.new do |spec|
                       languages into images using Kroki"
   spec.homepage = "https://github.com/felixvanoost/jekyll-kroki"
   spec.license = "MIT"
-  spec.required_ruby_version = ">= 2.6.0"
+  spec.required_ruby_version = ">= 2.7.0"
 
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = spec.homepage
