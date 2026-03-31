@@ -9,30 +9,142 @@ require "base64"
 require "zlib"
 
 module Jekyll
-  class TestKrokiUrl < Minitest::Test
+  class TestKrokiConfig < Minitest::Test
     def test_valid_kroki_url
       url = "https://rubygems.org/"
       config = { "kroki" => { "url" => url } }
 
-      assert_equal ::Jekyll::Kroki.kroki_url(config), URI(url)
+      assert_equal URI(url), Jekyll::Kroki::Config.new(config).kroki_url
     end
 
     def test_invalid_kroki_url
-      url = "ht//rubygems.org/"
-      config = { "kroki" => { "url" => url } }
-      assert_raises(TypeError) { ::Jekyll::Kroki.kroki_url(config) }
+      config = { "kroki" => { "url" => "not a uri at all" } }
+
+      assert_raises(URI::InvalidURIError) { Jekyll::Kroki::Config.new(config) }
+    end
+
+    def test_non_http_kroki_url
+      config = { "kroki" => { "url" => "ftp://rubygems.org/" } }
+
+      assert_raises(TypeError) { Jekyll::Kroki::Config.new(config) }
     end
 
     def test_missing_kroki_url
       config = { "kroki" => { "pi" => 3.14 } }
 
-      assert_equal ::Jekyll::Kroki.kroki_url(config), URI("https://kroki.io")
+      assert_equal URI("https://kroki.io"), Jekyll::Kroki::Config.new(config).kroki_url
     end
 
     def test_missing_kroki_config
       config = { "another-plugin" => { "pi" => 3.14 } }
 
-      assert_equal ::Jekyll::Kroki.kroki_url(config), URI("https://kroki.io")
+      assert_equal URI("https://kroki.io"), Jekyll::Kroki::Config.new(config).kroki_url
+    end
+
+    # --- http_retries ---
+
+    def test_valid_http_retries
+      retries = 5
+      config = { "kroki" => { "http_retries" => retries } }
+
+      assert_equal retries, Jekyll::Kroki::Config.new(config).http_retries
+    end
+
+    def test_default_http_retries
+      config = {}
+
+      assert_equal Jekyll::Kroki::Config::DEFAULT_HTTP_RETRIES, Jekyll::Kroki::Config.new(config).http_retries
+    end
+
+    def test_zero_http_retries
+      config = { "kroki" => { "http_retries" => 0 } }
+
+      assert_equal 0, Jekyll::Kroki::Config.new(config).http_retries
+    end
+
+    def test_negative_http_retries
+      config = { "kroki" => { "http_retries" => -1 } }
+
+      assert_raises(ArgumentError) { Jekyll::Kroki::Config.new(config) }
+    end
+
+    def test_non_integer_http_retries
+      config = { "kroki" => { "http_retries" => "3" } }
+
+      assert_raises(TypeError) { Jekyll::Kroki::Config.new(config) }
+    end
+
+    # --- http_timeout ---
+
+    def test_valid_http_timeout
+      timeout = 30
+      config = { "kroki" => { "http_timeout" => timeout } }
+
+      assert_equal timeout, Jekyll::Kroki::Config.new(config).http_timeout
+    end
+
+    def test_default_http_timeout
+      config = {}
+
+      assert_equal Jekyll::Kroki::Config::DEFAULT_HTTP_TIMEOUT, Jekyll::Kroki::Config.new(config).http_timeout
+    end
+
+    def test_zero_http_timeout_is_valid
+      config = { "kroki" => { "http_timeout" => 0 } }
+
+      assert_equal 0, Jekyll::Kroki::Config.new(config).http_timeout
+    end
+
+    def test_negative_http_timeout_raises
+      config = { "kroki" => { "http_timeout" => -1 } }
+
+      assert_raises(ArgumentError) { Jekyll::Kroki::Config.new(config) }
+    end
+
+    def test_non_integer_http_timeout_raises
+      config = { "kroki" => { "http_timeout" => 15.5 } }
+
+      assert_raises(TypeError) { Jekyll::Kroki::Config.new(config) }
+    end
+
+    # --- max_concurrent_docs ---
+
+    def test_valid_max_concurrent_docs
+      max_concurrent = 4
+      config = { "kroki" => { "max_concurrent_docs" => max_concurrent } }
+
+      assert_equal max_concurrent, Jekyll::Kroki::Config.new(config).max_concurrent_docs
+    end
+
+    def test_default_max_concurrent_docs
+      config = {}
+
+      assert_equal Jekyll::Kroki::Config::DEFAULT_MAX_CONCURRENT_DOCS,
+                   Jekyll::Kroki::Config.new(config).max_concurrent_docs
+    end
+
+    def test_zero_max_concurrent_docs_raises
+      config = { "kroki" => { "max_concurrent_docs" => 0 } }
+
+      assert_raises(ArgumentError) { Jekyll::Kroki::Config.new(config) }
+    end
+
+    def test_negative_max_concurrent_docs_raises
+      config = { "kroki" => { "max_concurrent_docs" => -2 } }
+
+      assert_raises(ArgumentError) { Jekyll::Kroki::Config.new(config) }
+    end
+
+    def test_non_integer_max_concurrent_docs_raises
+      config = { "kroki" => { "max_concurrent_docs" => "8" } }
+
+      assert_raises(TypeError) { Jekyll::Kroki::Config.new(config) }
+    end
+
+    # --- immutability ---
+
+    def test_config_is_frozen
+      assert_predicate Jekyll::Kroki::Config.new({}), :frozen?
     end
   end
 
@@ -203,8 +315,6 @@ module Jekyll
       mermaid_result  = ::Jekyll::Kroki.render_diagram(@connection, desc_mermaid,  "mermaid")
       graphviz_result = ::Jekyll::Kroki.render_diagram(@connection, desc_graphviz, "graphviz")
 
-      # The same diagram text in different languages must be treated as distinct
-      # cache entries and must each produce their own HTTP request.
       refute_equal mermaid_result, graphviz_result
       @connection.verify
     end
@@ -220,26 +330,18 @@ module Jekyll
       result_a = ::Jekyll::Kroki.render_diagram(@connection, desc_a, "mermaid")
       result_b = ::Jekyll::Kroki.render_diagram(@connection, desc_b, "mermaid")
 
-      # Different diagram texts must each hit the network, as they are distinct
-      # cache entries even when the language is the same.
       refute_equal result_a, result_b
       @connection.verify
     end
 
     private
 
-    # Returns a diagram_desc mock expecting a single call to .text.
-    # render_diagram reads .text once upfront into a local variable and reuses
-    # it for both the cache key and encode_diagram, so one expectation covers
-    # both the cache-miss and cache-hit paths.
     def diagram_desc_mock(text)
       desc = Minitest::Mock.new
       desc.expect(:text, text)
       desc
     end
 
-    # Returns a mock SVG response with an optional id attribute so that
-    # per-language / per-text tests can assert they received distinct responses.
     def svg_response(id = nil)
       svg_body = if id
                    "<?xml version=\"1.0\"?>\n<svg id='#{id}'/>\n"
@@ -252,7 +354,6 @@ module Jekyll
       response
     end
 
-    # Convenience wrapper so tests don't repeat the encode call inline.
     def encode(text)
       Base64.urlsafe_encode64(Zlib.deflate(text))
     end
@@ -261,8 +362,6 @@ module Jekyll
   class TestKrokiEmbed < Minitest::Test
     def setup
       @connection = Minitest::Mock.new
-      # Reset the diagram cache before each test so that cached results from a previous
-      # test do not affect the next one.
       ::Jekyll::Kroki.instance_variable_set(:@diagram_cache, Concurrent::Map.new)
     end
 
@@ -281,7 +380,6 @@ module Jekyll
       rendered_diag = ::Jekyll::Kroki.embed_single_doc(@connection, doc)
 
       assert_equal 1, rendered_diag
-
       @connection.verify
     end
 
@@ -289,7 +387,7 @@ module Jekyll
       site = setup_mock_site
       connection = Minitest::Mock.new
 
-      response = setup_mock_response("graph TD; A-->B;")
+      response = setup_mock_response
       encoded_diagram = Base64.urlsafe_encode64(Zlib.deflate("graph TD; A-->B;"))
       connection.expect(:get, response, ["mermaid/svg/#{encoded_diagram}"])
 
@@ -341,9 +439,6 @@ module Jekyll
       site.verify
     end
 
-    # Verifies that identical diagrams appearing in two separate documents are
-    # only fetched from Kroki once. The second document must be served from the
-    # cache without an additional HTTP call.
     def test_embed_site_uses_cache_across_docs
       diagram_text = "graph TD; A-->B;"
       site, connection = setup_two_doc_site(diagram_text)
@@ -361,7 +456,7 @@ module Jekyll
     def setup_mock_site
       site = Minitest::Mock.new
       config = { "kroki" => { "url" => "https://kroki.io" } }
-      4.times { site.expect(:config, config) }
+      site.expect(:config, config)
 
       doc = Minitest::Mock.new
       doc.expect(:output_ext, ".html")
@@ -385,15 +480,12 @@ module Jekyll
       doc
     end
 
-    # Builds a mock site containing two documents with identical diagram text,
-    # and a mock connection expecting exactly one HTTP call to confirm that the
-    # second document is served from cache.
     def setup_two_doc_site(diagram_text)
       encoded = Base64.urlsafe_encode64(Zlib.deflate(diagram_text))
 
       site = Minitest::Mock.new
       config = { "kroki" => { "url" => "https://kroki.io" } }
-      4.times { site.expect(:config, config) }
+      site.expect(:config, config)
       site.expect(:pages, [])
       site.expect(:documents, [create_mock_doc(diagram_text), create_mock_doc(diagram_text)])
 
@@ -406,7 +498,7 @@ module Jekyll
       [site, connection]
     end
 
-    def setup_mock_response(_diagram_text)
+    def setup_mock_response
       response = Minitest::Mock.new
       response.expect(:headers, { content_type: "image/svg+xml" })
       response.expect(:body, "<?xml version=\"1.0\"?>\n<svg/>\n")
