@@ -5,6 +5,7 @@ require_relative "kroki/version"
 require "async"
 require "async/semaphore"
 require "base64"
+require "concurrent-ruby"
 require "digest"
 require "faraday"
 require "faraday/retry"
@@ -28,8 +29,7 @@ module Jekyll
                              graphviz mermaid nomnoml nwdiag packetdiag pikchr plantuml rackdiag seqdiag structurizr
                              svgbob symbolator tikz umlet vega vegalite wavedrom wireviz].freeze
 
-    @diagram_cache = {}
-    @diagram_cache_mutex = Mutex.new
+    @diagram_cache = Concurrent::Map.new
 
     class << self
       # Renders and embeds all diagram descriptions in the given Jekyll site using Kroki.
@@ -116,8 +116,7 @@ module Jekyll
       end
 
       # Renders a single diagram description using Kroki. The rendered diagram is cached to avoid redundant HTTP
-      # requests across documents, using the diagram language and the SHA1 of the diagram description as the key. Writes
-      # to the cache are protected by a mutex to ensure consistent concurrent access.
+      # requests across documents, using the diagram language and the SHA1 of the diagram description as the key.
       #
       # @param [Faraday::Connection] The Faraday connection to use.
       # @param [String] The diagram description.
@@ -126,16 +125,15 @@ module Jekyll
       def render_diagram(connection, diagram_desc, language)
         diagram_text = diagram_desc.text
         cache_key = "#{language}:#{Digest::SHA1.hexdigest(diagram_text)}"
-        return @diagram_cache[cache_key] if @diagram_cache.key?(cache_key)
-
-        begin
-          response = connection.get("#{language}/svg/#{encode_diagram(diagram_text)}")
-        rescue Faraday::Error => e
-          raise e.message
+        @diagram_cache.compute_if_absent(cache_key) do
+          begin
+            response = connection.get("#{language}/svg/#{encode_diagram(diagram_text)}")
+          rescue Faraday::Error => e
+            raise e.message
+          end
+          validate_content_type(response)
+          sanitise_diagram(response.body)
         end
-        validate_content_type(response)
-        svg = sanitise_diagram(response.body)
-        @diagram_cache_mutex.synchronize { @diagram_cache[cache_key] ||= svg }
       end
 
       # Validates that the Kroki response has the expected SVG content type.

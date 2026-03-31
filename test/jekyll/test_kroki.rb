@@ -131,7 +131,7 @@ module Jekyll
       @connection = Minitest::Mock.new
       # Reset the diagram cache before each test so that cached results from a previous
       # test do not affect the next one.
-      ::Jekyll::Kroki.instance_variable_set(:@diagram_cache, {})
+      ::Jekyll::Kroki.instance_variable_set(:@diagram_cache, Concurrent::Map.new)
     end
 
     def test_render_diagram_success
@@ -263,7 +263,7 @@ module Jekyll
       @connection = Minitest::Mock.new
       # Reset the diagram cache before each test so that cached results from a previous
       # test do not affect the next one.
-      ::Jekyll::Kroki.instance_variable_set(:@diagram_cache, {})
+      ::Jekyll::Kroki.instance_variable_set(:@diagram_cache, Concurrent::Map.new)
     end
 
     def test_embed_single_doc
