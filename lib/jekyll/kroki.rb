@@ -34,18 +34,16 @@ module Jekyll
       #
       # @param [Jekyll::Site] The Jekyll site to embed diagrams in.
       def embed_site(site)
-        kroki_url = get_kroki_url(site.config)
-        http_retries = get_http_retries(site.config)
-        http_timeout = get_http_timeout(site.config)
-        connection = setup_connection(kroki_url, http_retries, http_timeout)
+        kroki_url = kroki_url(site.config)
+        connection = setup_connection(kroki_url, http_retries(site.config), http_timeout(site.config))
 
-        max_concurrent_docs = get_max_concurrent_docs(site.config)
+        max_concurrent_docs = max_concurrent_docs(site.config)
         rendered_diag = embed_docs_in_site(site, connection, max_concurrent_docs)
         unless rendered_diag.zero?
           puts "[jekyll-kroki] Rendered #{rendered_diag} diagrams using Kroki instance at '#{kroki_url}'"
         end
       rescue StandardError => e
-        exit(e)
+        fatal_error(e)
       end
 
       # Renders the diagram descriptions in all Jekyll pages and documents in the given Jekyll site. Pages / documents
@@ -185,7 +183,7 @@ module Jekyll
       #
       # @param The Jekyll site configuration.
       # @return [URI::HTTP] The URL of the Kroki instance.
-      def get_kroki_url(config)
+      def kroki_url(config)
         url = config.fetch("kroki", {}).fetch("url", DEFAULT_KROKI_URL)
         raise TypeError, "'url' is not a valid HTTP URL" unless URI.parse(url).is_a?(URI::HTTP)
 
@@ -196,7 +194,7 @@ module Jekyll
       #
       # @param The Jekyll site configuration.
       # @return [Integer] The number of HTTP retries.
-      def get_http_retries(config)
+      def http_retries(config)
         config.fetch("kroki", {}).fetch("http_retries", DEFAULT_HTTP_RETRIES)
       end
 
@@ -204,7 +202,7 @@ module Jekyll
       #
       # @param The Jekyll site configuration.
       # @return [Integer] The HTTP timeout value in seconds.
-      def get_http_timeout(config)
+      def http_timeout(config)
         config.fetch("kroki", {}).fetch("http_timeout", DEFAULT_HTTP_TIMEOUT)
       end
 
@@ -212,7 +210,7 @@ module Jekyll
       #
       # @param The Jekyll site configuration.
       # @return [Integer] The maximum number of documents to render concurrently.
-      def get_max_concurrent_docs(config)
+      def max_concurrent_docs(config)
         config.fetch("kroki", {}).fetch("max_concurrent_docs", DEFAULT_MAX_CONCURRENT_DOCS)
       end
 
@@ -232,7 +230,7 @@ module Jekyll
       #              calling method. To specify the calling method's caller, pass in 2.
       #
       # Source: https://www.mslinn.com/ruby/2200-crash-exit.html
-      def exit(error, caller_index = 1)
+      def fatal_error(error, caller_index = 1)
         raise error
       rescue StandardError => e
         file, line_number, caller = e.backtrace[caller_index].split(":")

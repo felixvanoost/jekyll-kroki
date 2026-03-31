@@ -14,25 +14,25 @@ module Jekyll
       url = "https://rubygems.org/"
       config = { "kroki" => { "url" => url } }
 
-      assert_equal ::Jekyll::Kroki.get_kroki_url(config), URI(url)
+      assert_equal ::Jekyll::Kroki.kroki_url(config), URI(url)
     end
 
     def test_invalid_kroki_url
       url = "ht//rubygems.org/"
       config = { "kroki" => { "url" => url } }
-      assert_raises(TypeError) { ::Jekyll::Kroki.get_kroki_url(config) }
+      assert_raises(TypeError) { ::Jekyll::Kroki.kroki_url(config) }
     end
 
     def test_missing_kroki_url
       config = { "kroki" => { "pi" => 3.14 } }
 
-      assert_equal ::Jekyll::Kroki.get_kroki_url(config), URI("https://kroki.io")
+      assert_equal ::Jekyll::Kroki.kroki_url(config), URI("https://kroki.io")
     end
 
     def test_missing_kroki_config
       config = { "another-plugin" => { "pi" => 3.14 } }
 
-      assert_equal ::Jekyll::Kroki.get_kroki_url(config), URI("https://kroki.io")
+      assert_equal ::Jekyll::Kroki.kroki_url(config), URI("https://kroki.io")
     end
   end
 
