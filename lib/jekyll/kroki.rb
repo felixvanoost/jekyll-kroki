@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "kroki/config"
 require_relative "kroki/version"
 
 require "async"
@@ -36,13 +37,12 @@ module Jekyll
       #
       # @param [Jekyll::Site] The Jekyll site to embed diagrams in.
       def embed_site(site)
-        kroki_url = kroki_url(site.config)
-        connection = setup_connection(kroki_url, http_retries(site.config), http_timeout(site.config))
+        config = Config.new(site.config)
+        connection = setup_connection(config.kroki_url, config.http_retries, config.http_timeout)
 
-        max_concurrent_docs = max_concurrent_docs(site.config)
-        rendered_diag = embed_docs_in_site(site, connection, max_concurrent_docs)
+        rendered_diag = embed_docs_in_site(site, connection, config.max_concurrent_docs)
         unless rendered_diag.zero?
-          puts "[jekyll-kroki] Rendered #{rendered_diag} diagrams using Kroki instance at '#{kroki_url}'"
+          puts "[jekyll-kroki] Rendered #{rendered_diag} diagrams using Kroki instance at '#{config.kroki_url}'"
         end
       rescue StandardError => e
         fatal_error(e)
@@ -186,60 +186,6 @@ module Jekyll
           builder.response :json, content_type: /\bjson$/
           builder.response :raise_error
         end
-      end
-
-      # Gets the URL of the Kroki instance to use for rendering diagrams.
-      #
-      # @param The Jekyll site configuration.
-      # @return [URI::HTTP] The URL of the Kroki instance.
-      def kroki_url(config)
-        param_name = "url"
-        url = config.fetch("kroki", {}).fetch(param_name, DEFAULT_KROKI_URL)
-        uri = URI.parse(url)
-        raise TypeError, "'#{param_name}' is not a valid HTTP URL" unless uri.is_a?(URI::HTTP)
-
-        uri
-      end
-
-      # Gets the number of HTTP retries.
-      #
-      # @param The Jekyll site configuration.
-      # @return [Integer] The number of HTTP retries.
-      def http_retries(config)
-        param_name = "http_retries"
-        retries = config.fetch("kroki", {}).fetch(param_name, DEFAULT_HTTP_RETRIES)
-        validate_integer(retries, param_name, min: 0)
-
-        retries
-      end
-
-      # Gets the HTTP timeout value.
-      #
-      # @param The Jekyll site configuration.
-      # @return [Integer] The HTTP timeout value in seconds.
-      def http_timeout(config)
-        param_name = "http_timeout"
-        timeout = config.fetch("kroki", {}).fetch(param_name, DEFAULT_HTTP_TIMEOUT)
-        validate_integer(timeout, param_name, min: 0)
-
-        timeout
-      end
-
-      # Gets the maximum number of documents to render concurrently.
-      #
-      # @param The Jekyll site configuration.
-      # @return [Integer] The maximum number of documents to render concurrently.
-      def max_concurrent_docs(config)
-        param_name = "max_concurrent_docs"
-        max_concurrent = config.fetch("kroki", {}).fetch(param_name, DEFAULT_MAX_CONCURRENT_DOCS)
-        validate_integer(max_concurrent, param_name, min: 1)
-
-        max_concurrent
-      end
-
-      def validate_integer(value, param_name, min: 0)
-        raise TypeError, "'#{param_name}' must be an integer" unless value.is_a?(Integer)
-        raise ArgumentError, "'#{param_name}' must be >= #{min}" if value < min
       end
 
       # Determines whether a document may contain embeddable diagram descriptions; it is in HTML format and is either
