@@ -27,6 +27,8 @@ module Jekyll
                              graphviz mermaid nomnoml nwdiag packetdiag pikchr plantuml rackdiag seqdiag structurizr
                              svgbob symbolator tikz umlet vega vegalite wavedrom wireviz].freeze
 
+    @diagram_cache = {}
+
     class << self
       # Renders and embeds all diagram descriptions in the given Jekyll site using Kroki.
       #
@@ -120,19 +122,23 @@ module Jekyll
       # @param [String] The language of the diagram description.
       # @return [String] The rendered diagram in SVG format.
       def render_diagram(connection, diagram_desc, language)
-        begin
-          response = connection.get("#{language}/svg/#{encode_diagram(diagram_desc.text)}")
-        rescue Faraday::Error => e
-          raise e.message
-        end
-        expected_content_type = "image/svg+xml"
-        returned_content_type = response.headers[:content_type]
-        if returned_content_type != expected_content_type
-          raise "Kroki returned an incorrect content type: " \
-                "expected '#{expected_content_type}', received '#{returned_content_type}'"
+        diagram_text = diagram_desc.text
+        cache_key = "#{language}:#{diagram_text}"
 
+        @diagram_cache.fetch(cache_key) do
+          begin
+            response = connection.get("#{language}/svg/#{encode_diagram(diagram_text)}")
+          rescue Faraday::Error => e
+            raise e.message
+          end
+          expected_content_type = "image/svg+xml"
+          returned_content_type = response.headers[:content_type]
+          if returned_content_type != expected_content_type
+            raise "Kroki returned an incorrect content type: " \
+                  "expected '#{expected_content_type}', received '#{returned_content_type}'"
+          end
+          @diagram_cache[cache_key] = sanitise_diagram(response.body)
         end
-        sanitise_diagram(response.body)
       end
 
       # Sanitises a rendered diagram. Only <script> elements are removed, which is the most minimal / naive
