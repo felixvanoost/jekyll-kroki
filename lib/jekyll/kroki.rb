@@ -193,10 +193,12 @@ module Jekyll
       # @param The Jekyll site configuration.
       # @return [URI::HTTP] The URL of the Kroki instance.
       def kroki_url(config)
-        url = config.fetch("kroki", {}).fetch("url", DEFAULT_KROKI_URL)
-        raise TypeError, "'url' is not a valid HTTP URL" unless URI.parse(url).is_a?(URI::HTTP)
+        param_name = "url"
+        url = config.fetch("kroki", {}).fetch(param_name, DEFAULT_KROKI_URL)
+        uri = URI.parse(url)
+        raise TypeError, "'#{param_name}' is not a valid HTTP URL" unless uri.is_a?(URI::HTTP)
 
-        URI(url)
+        uri
       end
 
       # Gets the number of HTTP retries.
@@ -204,7 +206,11 @@ module Jekyll
       # @param The Jekyll site configuration.
       # @return [Integer] The number of HTTP retries.
       def http_retries(config)
-        config.fetch("kroki", {}).fetch("http_retries", DEFAULT_HTTP_RETRIES)
+        param_name = "http_retries"
+        retries = config.fetch("kroki", {}).fetch(param_name, DEFAULT_HTTP_RETRIES)
+        validate_integer(retries, param_name, min: 0)
+
+        retries
       end
 
       # Gets the HTTP timeout value.
@@ -212,7 +218,11 @@ module Jekyll
       # @param The Jekyll site configuration.
       # @return [Integer] The HTTP timeout value in seconds.
       def http_timeout(config)
-        config.fetch("kroki", {}).fetch("http_timeout", DEFAULT_HTTP_TIMEOUT)
+        param_name = "http_timeout"
+        timeout = config.fetch("kroki", {}).fetch(param_name, DEFAULT_HTTP_TIMEOUT)
+        validate_integer(timeout, param_name, min: 0)
+
+        timeout
       end
 
       # Gets the maximum number of documents to render concurrently.
@@ -220,13 +230,22 @@ module Jekyll
       # @param The Jekyll site configuration.
       # @return [Integer] The maximum number of documents to render concurrently.
       def max_concurrent_docs(config)
-        config.fetch("kroki", {}).fetch("max_concurrent_docs", DEFAULT_MAX_CONCURRENT_DOCS)
+        param_name = "max_concurrent_docs"
+        max_concurrent = config.fetch("kroki", {}).fetch(param_name, DEFAULT_MAX_CONCURRENT_DOCS)
+        validate_integer(max_concurrent, param_name, min: 1)
+
+        max_concurrent
+      end
+
+      def validate_integer(value, param_name, min: 0)
+        raise TypeError, "'#{param_name}' must be an integer" unless value.is_a?(Integer)
+        raise ArgumentError, "'#{param_name}' must be >= #{min}" if value < min
       end
 
       # Determines whether a document may contain embeddable diagram descriptions; it is in HTML format and is either
       # a Jekyll::Page or writeable Jekyll::Document.
       #
-      # @param [Jekyll::Page or Jekyll::Document] The document to check for embeddability.
+      # @param [Jekyll::Page or Jekyll::Document] The document to check for embeddable diagrams.
       def embeddable?(doc)
         doc.output_ext == ".html" && (doc.is_a?(Jekyll::Page) || doc.write?)
       end
