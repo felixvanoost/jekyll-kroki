@@ -12,24 +12,22 @@ Gem::Specification.new do |spec|
                       languages into images using Kroki"
   spec.homepage = "https://github.com/felixvanoost/jekyll-kroki"
   spec.license = "MIT"
-  spec.required_ruby_version = ">= 2.7.0"
+  spec.required_ruby_version = ">= 3.0.0"
 
-  spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = spec.homepage
   spec.metadata["rubygems_mfa_required"] = "true"
 
   # Load the files that are versioned in Git into the RubyGem.
   spec.files = Dir.chdir(__dir__) do
     `git ls-files -z`.split("\x0").reject do |f|
-      (File.expand_path(f) == __FILE__) ||
+      (f == File.basename(__FILE__)) ||
         f.start_with?(*%w[bin/ test/ spec/ features/ .git appveyor Gemfile])
     end
   end
-  spec.bindir = "exe"
-  spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
 
   spec.add_dependency "async", ["~> 2.25"]
+  spec.add_dependency "concurrent-ruby", ["~> 1.3"]
   spec.add_dependency "faraday", ["~> 2.7"]
   spec.add_dependency "faraday-retry", ["~> 2.2"]
   spec.add_dependency "httpx", ["~> 1.1"]

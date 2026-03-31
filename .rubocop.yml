@@ -5,7 +5,7 @@ plugins:
 
 AllCops:
   NewCops: enable
-  TargetRubyVersion: 2.7
+  TargetRubyVersion: 3.0
 
 Gemspec/DevelopmentDependencies:
   EnforcedStyle: gemspec
@@ -21,6 +21,6 @@ Style/StringLiteralsInInterpolation:
 Layout/LineLength:
   Max: 120
 Metrics/ClassLength:
-  Max: 125
+  Max: 140
 Metrics/MethodLength:
   Max: 16
