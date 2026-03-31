@@ -5,6 +5,7 @@ require_relative "kroki/version"
 require "async"
 require "async/semaphore"
 require "base64"
+require "digest"
 require "faraday"
 require "faraday/retry"
 require "httpx/adapters/faraday"
@@ -28,6 +29,7 @@ module Jekyll
                              svgbob symbolator tikz umlet vega vegalite wavedrom wireviz].freeze
 
     @diagram_cache = {}
+    @diagram_cache_mutex = Mutex.new
 
     class << self
       # Renders and embeds all diagram descriptions in the given Jekyll site using Kroki.
@@ -47,7 +49,7 @@ module Jekyll
       end
 
       # Renders the diagram descriptions in all Jekyll pages and documents in the given Jekyll site. Pages / documents
-      # are rendered concurrently up to the limit defined by DEFAULT_MAX_CONCURRENT_DOCS.
+      # are rendered concurrently up to the limit defined by max_concurrent_docs.
       #
       # @param [Jekyll::Site] The Jekyll site to embed diagrams in.
       # @param [Faraday::Connection] The Faraday connection to use.
@@ -70,8 +72,8 @@ module Jekyll
         rendered_diag
       end
 
-      # Renders the supported diagram descriptions in a single document asynchronously, respecting the concurrency limit
-      # imposed by the provided semaphore.
+      # Renders the supported diagram descriptions in a single document. Multiple documents can be rendered concurrently
+      # up to the limit imposed by the given semaphore.
       #
       # @param [Async::Task] The parent async task to spawn a child task from.
       # @param [Async::Semaphore] A semaphore to limit concurrency.
@@ -87,8 +89,8 @@ module Jekyll
         end
       end
 
-      # Renders the supported diagram descriptions in a single document and embeds them as inline SVGs in the HTML
-      # source.
+      # Renders the supported diagram descriptions in a single document sequentially and embeds them as inline SVGs in
+      # the HTML source.
       #
       # @param [Faraday::Connection] The Faraday connection to use.
       # @param [Jekyll::Page, Jekyll::Document] The document to process.
@@ -113,7 +115,9 @@ module Jekyll
         rendered_diag
       end
 
-      # Renders a single diagram description using Kroki.
+      # Renders a single diagram description using Kroki. The rendered diagram is cached to avoid redundant HTTP
+      # requests across documents, using the diagram language and the SHA1 of the diagram description as the key. Writes
+      # to the cache are protected by a mutex to ensure consistent concurrent access.
       #
       # @param [Faraday::Connection] The Faraday connection to use.
       # @param [String] The diagram description.
@@ -121,22 +125,29 @@ module Jekyll
       # @return [String] The rendered diagram in SVG format.
       def render_diagram(connection, diagram_desc, language)
         diagram_text = diagram_desc.text
-        cache_key = "#{language}:#{diagram_text}"
+        cache_key = "#{language}:#{Digest::SHA1.hexdigest(diagram_text)}"
+        return @diagram_cache[cache_key] if @diagram_cache.key?(cache_key)
 
-        @diagram_cache.fetch(cache_key) do
-          begin
-            response = connection.get("#{language}/svg/#{encode_diagram(diagram_text)}")
-          rescue Faraday::Error => e
-            raise e.message
-          end
-          expected_content_type = "image/svg+xml"
-          returned_content_type = response.headers[:content_type]
-          if returned_content_type != expected_content_type
-            raise "Kroki returned an incorrect content type: " \
-                  "expected '#{expected_content_type}', received '#{returned_content_type}'"
-          end
-          @diagram_cache[cache_key] = sanitise_diagram(response.body)
+        begin
+          response = connection.get("#{language}/svg/#{encode_diagram(diagram_text)}")
+        rescue Faraday::Error => e
+          raise e.message
         end
+        validate_content_type(response)
+        svg = sanitise_diagram(response.body)
+        @diagram_cache_mutex.synchronize { @diagram_cache[cache_key] ||= svg }
+      end
+
+      # Validates that the Kroki response has the expected SVG content type.
+      #
+      # @param [Faraday::Response] The response to validate.
+      def validate_content_type(response)
+        expected_content_type = "image/svg+xml"
+        returned_content_type = response.headers[:content_type]
+        return if returned_content_type == expected_content_type
+
+        raise "Kroki returned an incorrect content type: " \
+              "expected '#{expected_content_type}', received '#{returned_content_type}'"
       end
 
       # Sanitises a rendered diagram. Only <script> elements are removed, which is the most minimal / naive

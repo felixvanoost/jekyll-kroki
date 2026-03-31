@@ -90,6 +90,42 @@ module Jekyll
     end
   end
 
+  class TestKrokiValidateContentType < Minitest::Test
+    def test_valid_content_type
+      response = Minitest::Mock.new
+      response.expect(:headers, { content_type: "image/svg+xml" })
+
+      assert_nil ::Jekyll::Kroki.validate_content_type(response)
+      response.verify
+    end
+
+    def test_invalid_content_type
+      response = Minitest::Mock.new
+      response.expect(:headers, { content_type: "text/html" })
+
+      error = assert_raises(RuntimeError) { ::Jekyll::Kroki.validate_content_type(response) }
+      assert_match "image/svg+xml", error.message
+      assert_match "text/html", error.message
+      response.verify
+    end
+
+    def test_missing_content_type
+      response = Minitest::Mock.new
+      response.expect(:headers, {})
+
+      assert_raises(RuntimeError) { ::Jekyll::Kroki.validate_content_type(response) }
+      response.verify
+    end
+
+    def test_content_type_with_charset_suffix
+      response = Minitest::Mock.new
+      response.expect(:headers, { content_type: "image/svg+xml; charset=utf-8" })
+
+      assert_raises(RuntimeError) { ::Jekyll::Kroki.validate_content_type(response) }
+      response.verify
+    end
+  end
+
   class TestKrokiRendering < Minitest::Test
     def setup
       @connection = Minitest::Mock.new
