@@ -5,6 +5,8 @@ require_relative "kroki/version"
 require "async"
 require "async/semaphore"
 require "base64"
+require "concurrent-ruby"
+require "digest"
 require "faraday"
 require "faraday/retry"
 require "httpx/adapters/faraday"
@@ -27,27 +29,27 @@ module Jekyll
                              graphviz mermaid nomnoml nwdiag packetdiag pikchr plantuml rackdiag seqdiag structurizr
                              svgbob symbolator tikz umlet vega vegalite wavedrom wireviz].freeze
 
+    @diagram_cache = Concurrent::Map.new
+
     class << self
       # Renders and embeds all diagram descriptions in the given Jekyll site using Kroki.
       #
       # @param [Jekyll::Site] The Jekyll site to embed diagrams in.
       def embed_site(site)
-        kroki_url = get_kroki_url(site.config)
-        http_retries = get_http_retries(site.config)
-        http_timeout = get_http_timeout(site.config)
-        connection = setup_connection(kroki_url, http_retries, http_timeout)
+        kroki_url = kroki_url(site.config)
+        connection = setup_connection(kroki_url, http_retries(site.config), http_timeout(site.config))
 
-        max_concurrent_docs = get_max_concurrent_docs(site.config)
+        max_concurrent_docs = max_concurrent_docs(site.config)
         rendered_diag = embed_docs_in_site(site, connection, max_concurrent_docs)
         unless rendered_diag.zero?
           puts "[jekyll-kroki] Rendered #{rendered_diag} diagrams using Kroki instance at '#{kroki_url}'"
         end
       rescue StandardError => e
-        exit(e)
+        fatal_error(e)
       end
 
       # Renders the diagram descriptions in all Jekyll pages and documents in the given Jekyll site. Pages / documents
-      # are rendered concurrently up to the limit defined by DEFAULT_MAX_CONCURRENT_DOCS.
+      # are rendered concurrently up to the limit defined by max_concurrent_docs.
       #
       # @param [Jekyll::Site] The Jekyll site to embed diagrams in.
       # @param [Faraday::Connection] The Faraday connection to use.
@@ -70,8 +72,8 @@ module Jekyll
         rendered_diag
       end
 
-      # Renders the supported diagram descriptions in a single document asynchronously, respecting the concurrency limit
-      # imposed by the provided semaphore.
+      # Renders the supported diagram descriptions in a single document. Multiple documents can be rendered concurrently
+      # up to the limit imposed by the given semaphore.
       #
       # @param [Async::Task] The parent async task to spawn a child task from.
       # @param [Async::Semaphore] A semaphore to limit concurrency.
@@ -87,8 +89,8 @@ module Jekyll
         end
       end
 
-      # Renders the supported diagram descriptions in a single document and embeds them as inline SVGs in the HTML
-      # source.
+      # Renders the supported diagram descriptions in a single document sequentially and embeds them as inline SVGs in
+      # the HTML source.
       #
       # @param [Faraday::Connection] The Faraday connection to use.
       # @param [Jekyll::Page, Jekyll::Document] The document to process.
@@ -113,26 +115,37 @@ module Jekyll
         rendered_diag
       end
 
-      # Renders a single diagram description using Kroki.
+      # Renders a single diagram description using Kroki. The rendered diagram is cached to avoid redundant HTTP
+      # requests across documents, using the diagram language and the SHA1 of the diagram description as the key.
       #
       # @param [Faraday::Connection] The Faraday connection to use.
       # @param [String] The diagram description.
       # @param [String] The language of the diagram description.
       # @return [String] The rendered diagram in SVG format.
       def render_diagram(connection, diagram_desc, language)
-        begin
-          response = connection.get("#{language}/svg/#{encode_diagram(diagram_desc.text)}")
-        rescue Faraday::Error => e
-          raise e.message
+        diagram_text = diagram_desc.text
+        cache_key = "#{language}:#{Digest::SHA1.hexdigest(diagram_text)}"
+        @diagram_cache.compute_if_absent(cache_key) do
+          begin
+            response = connection.get("#{language}/svg/#{encode_diagram(diagram_text)}")
+          rescue Faraday::Error => e
+            raise e.message
+          end
+          validate_content_type(response)
+          sanitise_diagram(response.body)
         end
+      end
+
+      # Validates that the Kroki response has the expected SVG content type.
+      #
+      # @param [Faraday::Response] The response to validate.
+      def validate_content_type(response)
         expected_content_type = "image/svg+xml"
         returned_content_type = response.headers[:content_type]
-        if returned_content_type != expected_content_type
-          raise "Kroki returned an incorrect content type: " \
-                "expected '#{expected_content_type}', received '#{returned_content_type}'"
+        return if returned_content_type == expected_content_type
 
-        end
-        sanitise_diagram(response.body)
+        raise "Kroki returned an incorrect content type: " \
+              "expected '#{expected_content_type}', received '#{returned_content_type}'"
       end
 
       # Sanitises a rendered diagram. Only <script> elements are removed, which is the most minimal / naive
@@ -179,7 +192,7 @@ module Jekyll
       #
       # @param The Jekyll site configuration.
       # @return [URI::HTTP] The URL of the Kroki instance.
-      def get_kroki_url(config)
+      def kroki_url(config)
         url = config.fetch("kroki", {}).fetch("url", DEFAULT_KROKI_URL)
         raise TypeError, "'url' is not a valid HTTP URL" unless URI.parse(url).is_a?(URI::HTTP)
 
@@ -190,7 +203,7 @@ module Jekyll
       #
       # @param The Jekyll site configuration.
       # @return [Integer] The number of HTTP retries.
-      def get_http_retries(config)
+      def http_retries(config)
         config.fetch("kroki", {}).fetch("http_retries", DEFAULT_HTTP_RETRIES)
       end
 
@@ -198,7 +211,7 @@ module Jekyll
       #
       # @param The Jekyll site configuration.
       # @return [Integer] The HTTP timeout value in seconds.
-      def get_http_timeout(config)
+      def http_timeout(config)
         config.fetch("kroki", {}).fetch("http_timeout", DEFAULT_HTTP_TIMEOUT)
       end
 
@@ -206,7 +219,7 @@ module Jekyll
       #
       # @param The Jekyll site configuration.
       # @return [Integer] The maximum number of documents to render concurrently.
-      def get_max_concurrent_docs(config)
+      def max_concurrent_docs(config)
         config.fetch("kroki", {}).fetch("max_concurrent_docs", DEFAULT_MAX_CONCURRENT_DOCS)
       end
 
@@ -226,7 +239,7 @@ module Jekyll
       #              calling method. To specify the calling method's caller, pass in 2.
       #
       # Source: https://www.mslinn.com/ruby/2200-crash-exit.html
-      def exit(error, caller_index = 1)
+      def fatal_error(error, caller_index = 1)
         raise error
       rescue StandardError => e
         file, line_number, caller = e.backtrace[caller_index].split(":")
