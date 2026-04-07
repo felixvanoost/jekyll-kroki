@@ -80,18 +80,19 @@ module Jekyll
       # @param [Jekyll::Page, Jekyll::Document] The document to process.
       # @return [Integer] The number of successfully rendered diagrams.
       def embed_single_doc(connection, doc)
-        # Parse the HTML document.
         parsed_doc = Nokogiri::HTML(doc.output)
 
+        # Create a single CSS query for all supported HTML tags and diagram languages.
+        selector = SUPPORTED_LANGUAGES.flat_map do |language|
+          EXPECTED_HTML_TAGS.map { |tag| "#{tag}[class~='language-#{language}']" }
+        end.join(", ")
+
         rendered_diag = 0
-        SUPPORTED_LANGUAGES.each do |language|
-          EXPECTED_HTML_TAGS.each do |tag|
-            parsed_doc.css("#{tag}[class~='language-#{language}']").each do |diagram_desc|
-              # Replace the diagram description with the SVG representation rendered by Kroki.
-              diagram_desc.replace(render_diagram(connection, diagram_desc, language))
-              rendered_diag += 1
-            end
-          end
+        parsed_doc.css(selector).each do |node|
+          # Extract the diagram language from the class list.
+          language = node["class"].split.find { |c| c.start_with?("language-") }.delete_prefix("language-")
+          node.replace(render_diagram(connection, node, language))
+          rendered_diag += 1
         end
 
         # Convert the document back to HTML.
