@@ -18,13 +18,17 @@ require "zlib"
 module Jekyll
   # Converts diagram descriptions into images using Kroki.
   class Kroki
-    EXPECTED_HTML_TAGS = %w[code div].freeze
-    HTTP_RETRY_INTERVAL_BACKOFF_FACTOR = 2
-    HTTP_RETRY_INTERVAL_RANDOMNESS = 0.5
-    HTTP_RETRY_INTERVAL = 0.1
     SUPPORTED_LANGUAGES = %w[actdiag blockdiag bpmn bytefield c4plantuml d2 dbml diagramsnet ditaa erd excalidraw
                              graphviz mermaid nomnoml nwdiag packetdiag pikchr plantuml rackdiag seqdiag structurizr
                              svgbob symbolator tikz umlet vega vegalite wavedrom wireviz].freeze
+    EXPECTED_HTML_TAGS = %w[code div].freeze
+    DIAGRAM_SELECTOR = SUPPORTED_LANGUAGES.flat_map do |language|
+      EXPECTED_HTML_TAGS.map { |tag| "#{tag}[class~='language-#{language}']" }
+    end.join(", ").freeze
+
+    HTTP_RETRY_INTERVAL_BACKOFF_FACTOR = 2
+    HTTP_RETRY_INTERVAL_RANDOMNESS = 0.5
+    HTTP_RETRY_INTERVAL = 0.1
 
     @diagram_cache = Concurrent::Map.new
 
@@ -74,30 +78,25 @@ module Jekyll
       end
 
       # Renders the supported diagram descriptions in a single document sequentially and embeds them as inline SVGs in
-      # the HTML source.
+      # the HTML source. Returns without modifying the document if no supported diagram descriptions are found.
       #
       # @param [Faraday::Connection] The Faraday connection to use.
       # @param [Jekyll::Page, Jekyll::Document] The document to process.
       # @return [Integer] The number of successfully rendered diagrams.
       def embed_single_doc(connection, doc)
         parsed_doc = Nokogiri::HTML(doc.output)
+        nodes = parsed_doc.css(DIAGRAM_SELECTOR)
+        return 0 if nodes.empty?
 
-        # Create a single CSS query for all supported HTML tags and diagram languages.
-        selector = SUPPORTED_LANGUAGES.flat_map do |language|
-          EXPECTED_HTML_TAGS.map { |tag| "#{tag}[class~='language-#{language}']" }
-        end.join(", ")
-
-        rendered_diag = 0
-        parsed_doc.css(selector).each do |node|
+        nodes.each do |node|
           # Extract the diagram language from the class list.
           language = node["class"].split.find { |c| c.start_with?("language-") }.delete_prefix("language-")
           node.replace(render_diagram(connection, node, language))
-          rendered_diag += 1
         end
 
         # Convert the document back to HTML.
         doc.output = parsed_doc.to_html
-        rendered_diag
+        nodes.size
       end
 
       # Renders a single diagram description using Kroki. The rendered diagram is cached to avoid redundant HTTP
