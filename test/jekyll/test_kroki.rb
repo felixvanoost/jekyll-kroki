@@ -355,7 +355,7 @@ module Jekyll
     end
 
     def encode(text)
-      Base64.urlsafe_encode64(Zlib.deflate(text))
+      Base64.urlsafe_encode64(Zlib.deflate(text, Zlib::BEST_COMPRESSION))
     end
   end
 
@@ -374,7 +374,7 @@ module Jekyll
       response.expect(:headers, { content_type: "image/svg+xml" })
       response.expect(:body, "<?xml version=\"1.0\"?>\n<svg/>\n")
 
-      encoded_diagram = Base64.urlsafe_encode64(Zlib.deflate("graph TD; A-->B;"))
+      encoded_diagram = Base64.urlsafe_encode64(Zlib.deflate("graph TD; A-->B;", Zlib::BEST_COMPRESSION))
       @connection.expect(:get, response, ["mermaid/svg/#{encoded_diagram}"])
 
       rendered_diag = ::Jekyll::Kroki.embed_single_doc(@connection, doc)
@@ -388,7 +388,7 @@ module Jekyll
       connection = Minitest::Mock.new
 
       response = setup_mock_response
-      encoded_diagram = Base64.urlsafe_encode64(Zlib.deflate("graph TD; A-->B;"))
+      encoded_diagram = Base64.urlsafe_encode64(Zlib.deflate("graph TD; A-->B;", Zlib::BEST_COMPRESSION))
       connection.expect(:get, response, ["mermaid/svg/#{encoded_diagram}"])
 
       ::Jekyll::Kroki.stub(:setup_connection, connection) do
@@ -481,7 +481,7 @@ module Jekyll
     end
 
     def setup_two_doc_site(diagram_text)
-      encoded = Base64.urlsafe_encode64(Zlib.deflate(diagram_text))
+      encoded = Base64.urlsafe_encode64(Zlib.deflate(diagram_text, Zlib::BEST_COMPRESSION))
 
       site = Minitest::Mock.new
       config = { "kroki" => { "url" => "https://kroki.io" } }

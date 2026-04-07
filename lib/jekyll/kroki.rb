@@ -55,34 +55,22 @@ module Jekyll
         rendered_diag = 0
         semaphore = Async::Semaphore.new(max_concurrent_docs)
 
-        Async do |task|
+        Async do
           tasks = (site.pages + site.documents).filter_map do |doc|
             next unless embeddable?(doc)
 
-            async_embed_single_doc(task, semaphore, connection, doc)
+            semaphore.async do
+              embed_single_doc(connection, doc)
+            rescue StandardError => e
+              warn "[jekyll-kroki] Error rendering diagram: #{e.message}".red
+              0
+            end
           end
 
           rendered_diag = tasks.sum(&:wait)
         end
 
         rendered_diag
-      end
-
-      # Renders the supported diagram descriptions in a single document. Multiple documents can be rendered concurrently
-      # up to the limit imposed by the given semaphore.
-      #
-      # @param [Async::Task] The parent async task to spawn a child task from.
-      # @param [Async::Semaphore] A semaphore to limit concurrency.
-      # @param [Faraday::Connection] The Faraday connection to use.
-      # @param [Jekyll::Page, Jekyll::Document] The document to process.
-      # @return [Integer] The number of successfully rendered diagrams.
-      def async_embed_single_doc(task, semaphore, connection, doc)
-        task.async do
-          semaphore.async { embed_single_doc(connection, doc) }.wait
-        rescue StandardError => e
-          warn "[jekyll-kroki] Error rendering diagram: #{e.message}".red
-          0
-        end
       end
 
       # Renders the supported diagram descriptions in a single document sequentially and embeds them as inline SVGs in
@@ -161,7 +149,7 @@ module Jekyll
       # @param [String, #read] The diagram description to encode.
       # @return [String] The encoded diagram.
       def encode_diagram(diagram_desc)
-        Base64.urlsafe_encode64(Zlib.deflate(diagram_desc))
+        Base64.urlsafe_encode64(Zlib.deflate(diagram_desc, Zlib::BEST_COMPRESSION))
       end
 
       # Sets up a new Faraday connection.
