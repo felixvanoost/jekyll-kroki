@@ -85,7 +85,7 @@ module Jekyll
 
         nodes.each do |node|
           # Extract the diagram language from the class list.
-          language = node["class"].split.find { |c| c.start_with?("language-") }.delete_prefix("language-")
+          language = node["class"].split.grep(/\Alanguage-/).first.delete_prefix("language-")
           node.replace(render_diagram(connection, node.text, language))
         end
 
