@@ -56,25 +56,20 @@ module Jekyll
       # @param [Integer] The maximum number of documents to render concurrently.
       # @return [Integer] The number of successfully rendered diagrams.
       def embed_docs_in_site(site, connection, max_concurrent_docs)
-        rendered_diag = 0
         semaphore = Async::Semaphore.new(max_concurrent_docs)
 
         Async do
-          tasks = (site.pages + site.documents).filter_map do |doc|
+          (site.pages + site.documents).filter_map do |doc|
             next unless embeddable?(doc)
 
             semaphore.async do
               embed_single_doc(connection, doc)
             rescue StandardError => e
-              warn "[jekyll-kroki] Error rendering diagram: #{e.message}".red
+              warn "[jekyll-kroki] Error rendering diagram: #{e.message}"
               0
             end
-          end
-
-          rendered_diag = tasks.sum(&:wait)
-        end
-
-        rendered_diag
+          end.sum(&:wait)
+        end.wait
       end
 
       # Renders the supported diagram descriptions in a single document sequentially and embeds them as inline SVGs in
