@@ -3,5 +3,9 @@
     "editor.rulers": [
         120
     ],
-    "rubyLsp.formatter": "rubocop"
+    "rubyLsp.formatter": "rubocop",
+    "cSpell.language": "en-GB",
+    "cSpell.words": [
+        "Kroki"
+    ]
 }

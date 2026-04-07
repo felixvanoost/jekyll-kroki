@@ -45,11 +45,11 @@ Instead of using Liquid tags, `jekyll-kroki` leverages the same Markdown fenced 
 
 #### Seamless GitLab integration
 
-Self-managed GitLab instances can additionally enable the [Kroki integration](https://docs.gitlab.com/ee/administration/integration/kroki.html), which adds support for all the same diagram scripting languages used by `jekyll-kroki`. Furthermore, by pointing both GitLab and `jekyll-kroki` to the same Kroki instance, you can guarantee that diagrams are generated using identical versions of the diagram libraries.
+Self-managed or dedicated GitLab instances can additionally enable the [Kroki integration](https://docs.gitlab.com/ee/administration/integration/kroki.html), which adds support for all the diagram scripting languages used by `jekyll-kroki`. Furthermore, by pointing both GitLab and `jekyll-kroki` to the same Kroki instance, you can guarantee that diagrams are generated using identical versions of the diagram libraries.
 
 #### Speed
 
-The server-side nature of Kroki means that you don't have to deal with installing or updating any diagram library dependencies on your machine. Jekyll sites that are generated in CI/CD pipelines can bypass these steps and will thus build faster.
+The server-side nature of Kroki means that you don't have to deal with installing or updating any diagram library dependencies on your machine. Jekyll sites that are generated in CI/CD pipelines can bypass these setup steps and will thus build faster. `jekyll-kroki` is built with performance in mind to minimise the build time of even the largest sites with thousands of diagrams.
 
 #### Flexibility
 
@@ -78,7 +78,7 @@ kroki:
 
 ### Security
 
-Embedding diagrams as SVGs directly within HTML files can be dangerous. You should only use a Kroki instance that you trust (or run your own!). For additional security, you can configure a [Content Security Policy (CSP)](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP) using custom Webrick headers in the Jekyll `_config.yml` file:
+Embedding untrusted SVGs directly in HTML files can introduce security risks. Use a Kroki instance that you trust, or consider hosting your own local/private instance. For added security, you can configure a [Content Security Policy (CSP)](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP) by adding custom Webrick headers in your Jekyll `_config.yml` file:
 
 ```yaml
 webrick:
