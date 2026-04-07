@@ -86,7 +86,7 @@ module Jekyll
         nodes.each do |node|
           # Extract the diagram language from the class list.
           language = node["class"].split.find { |c| c.start_with?("language-") }.delete_prefix("language-")
-          node.replace(render_diagram(connection, node, language))
+          node.replace(render_diagram(connection, node.text, language))
         end
 
         # Convert the document back to HTML.
@@ -101,17 +101,14 @@ module Jekyll
       # @param [String] The diagram description.
       # @param [String] The language of the diagram description.
       # @return [String] The rendered diagram in SVG format.
-      def render_diagram(connection, diagram_desc, language)
-        diagram_text = diagram_desc.text
+      def render_diagram(connection, diagram_text, language)
         cache_key = "#{language}:#{Digest::SHA1.hexdigest(diagram_text)}"
         @diagram_cache.compute_if_absent(cache_key) do
-          begin
-            response = connection.get("#{language}/svg/#{encode_diagram(diagram_text)}")
-          rescue Faraday::Error => e
-            raise e.message
-          end
+          response = connection.get("#{language}/svg/#{encode_diagram(diagram_text)}")
           validate_content_type(response)
           sanitise_diagram(response.body)
+        rescue Faraday::Error => e
+          raise e.message
         end
       end
 
@@ -123,7 +120,7 @@ module Jekyll
         returned_content_type = response.headers[:content_type]
         return if returned_content_type == expected_content_type
 
-        raise "Kroki returned an incorrect content type: " \
+        raise "[jekyll-kroki] Kroki returned an incorrect content type: " \
               "expected '#{expected_content_type}', received '#{returned_content_type}'"
       end
 

@@ -248,12 +248,11 @@ module Jekyll
 
     def test_render_diagram_success
       diagram_text = "graph TD; A-->B;"
-      diagram_desc = diagram_desc_mock(diagram_text)
       response = svg_response
 
       @connection.expect(:get, response, ["mermaid/svg/#{encode(diagram_text)}"])
 
-      result = ::Jekyll::Kroki.render_diagram(@connection, diagram_desc, "mermaid")
+      result = ::Jekyll::Kroki.render_diagram(@connection, diagram_text, "mermaid")
 
       assert_equal "<?xml version=\"1.0\"?>\n<svg/>\n", result
       @connection.verify
@@ -261,11 +260,10 @@ module Jekyll
 
     def test_render_diagram_failure
       diagram_text = "graph TD; A-->B;"
-      diagram_desc = diagram_desc_mock(diagram_text)
       @connection.expect(:get, nil) { raise "Connection failed" }
 
       assert_raises(RuntimeError) do
-        ::Jekyll::Kroki.render_diagram(@connection, diagram_desc, "mermaid")
+        ::Jekyll::Kroki.render_diagram(@connection, diagram_text, "mermaid")
       end
 
       @connection.verify
@@ -273,7 +271,6 @@ module Jekyll
 
     def test_render_diagram_incorrect_content_type
       diagram_text = "graph TD; A-->B;"
-      diagram_desc = diagram_desc_mock(diagram_text)
       response = Minitest::Mock.new
       response.expect(:headers, { content_type: "text/html" })
       response.expect(:body, "<?xml version=\"1.0\"?>\n<svg/>\n")
@@ -281,7 +278,7 @@ module Jekyll
       @connection.expect(:get, response, ["mermaid/svg/#{encode(diagram_text)}"])
 
       assert_raises(RuntimeError) do
-        ::Jekyll::Kroki.render_diagram(@connection, diagram_desc, "mermaid")
+        ::Jekyll::Kroki.render_diagram(@connection, diagram_text, "mermaid")
       end
 
       @connection.verify
@@ -289,46 +286,38 @@ module Jekyll
 
     def test_render_diagram_is_cached_after_first_call
       diagram_text = "graph TD; A-->B;"
-      desc_first  = diagram_desc_mock(diagram_text)
-      desc_second = diagram_desc_mock(diagram_text)
       @connection.expect(:get, svg_response, ["mermaid/svg/#{encode(diagram_text)}"])
 
-      first_result  = ::Jekyll::Kroki.render_diagram(@connection, desc_first,  "mermaid")
-      second_result = ::Jekyll::Kroki.render_diagram(@connection, desc_second, "mermaid")
+      first_result  = ::Jekyll::Kroki.render_diagram(@connection, diagram_text, "mermaid")
+      second_result = ::Jekyll::Kroki.render_diagram(@connection, diagram_text, "mermaid")
 
       assert_equal first_result, second_result
       # Verifying the mock ensures :get was called exactly once — a second call
       # would raise a MockExpectationError because no further :get is expected.
       @connection.verify
-      desc_first.verify
-      desc_second.verify
     end
 
     def test_cache_is_keyed_per_language
       diagram_text = "graph TD; A-->B;"
       encoded = encode(diagram_text)
-      desc_mermaid  = diagram_desc_mock(diagram_text)
-      desc_graphviz = diagram_desc_mock(diagram_text)
       @connection.expect(:get, svg_response("mermaid"),  ["mermaid/svg/#{encoded}"])
       @connection.expect(:get, svg_response("graphviz"), ["graphviz/svg/#{encoded}"])
 
-      mermaid_result  = ::Jekyll::Kroki.render_diagram(@connection, desc_mermaid,  "mermaid")
-      graphviz_result = ::Jekyll::Kroki.render_diagram(@connection, desc_graphviz, "graphviz")
+      mermaid_result  = ::Jekyll::Kroki.render_diagram(@connection, diagram_text, "mermaid")
+      graphviz_result = ::Jekyll::Kroki.render_diagram(@connection, diagram_text, "graphviz")
 
       refute_equal mermaid_result, graphviz_result
       @connection.verify
     end
 
     def test_cache_is_keyed_per_diagram_text
-      text_a = "graph TD; A-->B;"
-      text_b = "graph TD; X-->Y;"
-      desc_a = diagram_desc_mock(text_a)
-      desc_b = diagram_desc_mock(text_b)
-      @connection.expect(:get, svg_response("a"), ["mermaid/svg/#{encode(text_a)}"])
-      @connection.expect(:get, svg_response("b"), ["mermaid/svg/#{encode(text_b)}"])
+      diagram_text_a = "graph TD; A-->B;"
+      diagram_text_b = "graph TD; X-->Y;"
+      @connection.expect(:get, svg_response("a"), ["mermaid/svg/#{encode(diagram_text_a)}"])
+      @connection.expect(:get, svg_response("b"), ["mermaid/svg/#{encode(diagram_text_b)}"])
 
-      result_a = ::Jekyll::Kroki.render_diagram(@connection, desc_a, "mermaid")
-      result_b = ::Jekyll::Kroki.render_diagram(@connection, desc_b, "mermaid")
+      result_a = ::Jekyll::Kroki.render_diagram(@connection, diagram_text_a, "mermaid")
+      result_b = ::Jekyll::Kroki.render_diagram(@connection, diagram_text_b, "mermaid")
 
       refute_equal result_a, result_b
       @connection.verify
