@@ -41,11 +41,11 @@ module Jekyll
         connection = setup_connection(config.kroki_url, config.http_retries, config.http_timeout)
 
         rendered_diag = embed_docs_in_site(site, connection, config.max_concurrent_docs)
-        unless rendered_diag.zero?
-          puts "[jekyll-kroki] Rendered #{rendered_diag} diagrams using Kroki instance at '#{config.kroki_url}'"
-        end
-      rescue StandardError => e
-        fatal_error(e)
+        return unless rendered_diag.positive?
+
+        Jekyll.logger.info(
+          "[jekyll-kroki] Rendered #{rendered_diag} diagrams using Kroki instance at '#{config.kroki_url}'"
+        )
       end
 
       # Renders the diagram descriptions in all Jekyll pages and documents in the given Jekyll site. Pages / documents
@@ -65,7 +65,7 @@ module Jekyll
             semaphore.async do
               embed_single_doc(connection, doc)
             rescue StandardError => e
-              warn "[jekyll-kroki] Error rendering diagram: #{e.message}".red
+              Jekyll.logger.error "[jekyll-kroki] Failed to render diagram in '#{doc.relative_path}': #{e.message}"
               0
             end
           end.sum(&:wait)
@@ -107,8 +107,9 @@ module Jekyll
           response = connection.get("#{language}/svg/#{encode_diagram(diagram_text)}")
           validate_content_type(response)
           sanitise_diagram(response.body)
-        rescue Faraday::Error => e
-          raise e.message
+        rescue Faraday::BadRequestError => e
+          kroki_message = e.response_body.to_s.strip
+          raise e, (kroki_message.empty? ? e.message : kroki_message)
         end
       end
 
@@ -127,7 +128,7 @@ module Jekyll
       # Sanitises a rendered diagram. Only <script> elements are removed, which is the most minimal / naive
       # implementation possible.
       #
-      # @param [String] The diagram to santise in SVG format.
+      # @param [String] The diagram to sanitise in SVG format.
       # @return [String] The sanitised diagram.
       def sanitise_diagram(diagram_svg)
         parsed_svg = Nokogiri::XML(diagram_svg)
@@ -171,27 +172,13 @@ module Jekyll
       def embeddable?(doc)
         doc.output_ext == ".html" && (doc.is_a?(Jekyll::Page) || doc.write?)
       end
-
-      # Exits the Jekyll process without returning a stack trace. This method does not return because the process is
-      # abruptly terminated.
-      #
-      # @param [StandardError] The error to display in the termination message.
-      # @param [int] The caller index to display in the termination message. The default index is 1, which means the
-      #              calling method. To specify the calling method's caller, pass in 2.
-      #
-      # Source: https://www.mslinn.com/ruby/2200-crash-exit.html
-      def fatal_error(error, caller_index = 1)
-        raise error
-      rescue StandardError => e
-        file, line_number, caller = e.backtrace[caller_index].split(":")
-        caller = caller.tr("", "'")
-        warn %([jekyll-kroki] "#{error.message}" #{caller} on line #{line_number} of #{file}).red
-        exec "exit 1"
-      end
     end
   end
 end
 
 Jekyll::Hooks.register :site, :post_render do |site|
   Jekyll::Kroki.embed_site(site)
+rescue StandardError => e
+  Jekyll.logger.error "[jekyll-kroki] #{e.class}: #{e.message}"
+  raise
 end
